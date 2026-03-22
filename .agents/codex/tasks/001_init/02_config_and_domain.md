@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -37,11 +37,11 @@ Implement the app-native configuration schema and core domain model boundaries a
 
 ## Tracking Checklist
 
-- [ ] Config types defined
-- [ ] Config validation defined
-- [ ] Domain enums defined
-- [ ] Core domain entities defined
-- [ ] Playnite metadata alignment implemented
+- [x] Config types defined
+- [x] Config validation defined
+- [x] Domain enums defined
+- [x] Core domain entities defined
+- [x] Playnite metadata alignment implemented
 
 ## Blockers
 
@@ -50,3 +50,5 @@ Implement the app-native configuration schema and core domain model boundaries a
 ## Notes
 
 - Keep public and integration-facing names aligned with Playnite unless there is a strong reason not to.
+- Implemented in `backend/src/config.rs` and `backend/src/domain.rs` with TOML loading, validation, and Playnite-aligned metadata names.
+- Example config now includes `integrations.playnite` and `[[platforms]]` so local development uses the same schema as the app.

@@ -25,7 +25,7 @@ This directory tracks the initial implementation plan for Gumo.
 | Task | Title | Status | Depends On |
 | --- | --- | --- | --- |
 | 01 | Repo Foundation | Completed | - |
-| 02 | Config And Domain | Not started | 01 |
+| 02 | Config And Domain | Completed | 01 |
 | 03 | Database And Migrations | Not started | 01, 02 |
 | 04 | Backend API Scaffold | Not started | 01, 02, 03 |
 | 05 | Uploads And Jobs | Not started | 03, 04 |

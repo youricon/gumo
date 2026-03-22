@@ -3,7 +3,9 @@ let
   backend = pkgs.rustPlatform.buildRustPackage {
     pname = "gumo-backend";
     version = "0.1.0";
-    src = ../backend;
+    src = ../.;
+    cargoRoot = "backend";
+    buildAndTestSubdir = "backend";
     cargoLock.lockFile = ../backend/Cargo.lock;
 
     meta = {

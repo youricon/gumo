@@ -6,12 +6,27 @@ port = 8080
 database_path = "./.local/gumo/data/gumo.db"
 asset_dir = "./.local/gumo/assets"
 managed_storage_dir = "./.local/gumo/storage"
+temp_dir = "./.local/gumo/tmp"
+split_part_size_bytes = 2147483648
+deduplicate_by_checksum = true
 
 [auth]
 admin_mode = "local"
 session_secret_file = "./.local/gumo/secrets/session-secret"
 owner_password_hash_file = "./.local/gumo/secrets/admin-password-hash"
 api_tokens_file = "./.local/gumo/secrets/api-tokens.toml"
+trusted_proxy_headers = []
+
+[integrations.playnite]
+enabled = true
+allow_uploads = true
+default_platform = "pc"
+token_label_prefix = "playnite"
+
+[[platforms]]
+id = "pc"
+enabled = true
+match_priority = 100
 
 [[libraries]]
 name = "primary"
