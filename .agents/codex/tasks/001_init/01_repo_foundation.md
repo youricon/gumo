@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -38,11 +38,11 @@ Create the initial repo structure and Nix-first development foundation for the m
 
 ## Tracking Checklist
 
-- [ ] Repo layout created
-- [ ] Flake outputs defined
-- [ ] Dev shell defined
-- [ ] Local dev path documented
-- [ ] Apps/run targets defined
+- [x] Repo layout created
+- [x] Flake outputs defined
+- [x] Dev shell defined
+- [x] Local dev path documented
+- [x] Apps/run targets defined
 
 ## Blockers
 
@@ -52,3 +52,5 @@ Create the initial repo structure and Nix-first development foundation for the m
 
 - Keep the NixOS module a wrapper around app-native config.
 - Do not couple local development to NixOS-specific paths.
+- Implemented with placeholder backend and web scaffolds so later tasks can layer in real runtime code without reworking the repository shape.
+- Local development paths are documented in `docs/local-development.md`, and `nix run .#dev-init` creates the expected `./.local/gumo/` layout.

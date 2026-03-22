@@ -1,0 +1,32 @@
+# Local Development
+
+Gumo development should run directly from `nix develop` against repo-local state.
+
+## Local State Layout
+
+Use `./.local/gumo/` for development-only writable state:
+
+- `./.local/gumo/config.toml`
+- `./.local/gumo/data/`
+- `./.local/gumo/assets/`
+- `./.local/gumo/storage/`
+- `./.local/gumo/secrets/`
+- `./.local/gumo/tmp/`
+
+These paths are local-only and must not be assumed by packaged deployments.
+
+## Development Workflow
+
+1. Enter the shell with `nix develop`.
+2. Initialize local state with `nix run .#dev-init`.
+3. Install frontend dependencies with `npm --prefix web install`.
+4. Run the backend with `nix run .#backend`.
+5. Run the frontend dev server with `nix run .#frontend`.
+
+The backend and frontend should remain runnable independently in development.
+
+## Configuration
+
+The example development config lives at `config/gumo.example.toml`.
+
+Copy it into `./.local/gumo/config.toml` before running the backend. The dev init app performs that copy automatically if the config file is absent.

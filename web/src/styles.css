@@ -1,0 +1,57 @@
+:root {
+  color: #f4efe2;
+  background:
+    radial-gradient(circle at top, rgba(214, 128, 59, 0.24), transparent 34%),
+    linear-gradient(180deg, #18120f 0%, #0f0a08 100%);
+  font-family: "Iosevka Aile", "IBM Plex Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.hero {
+  max-width: 48rem;
+  border: 1px solid rgba(244, 239, 226, 0.12);
+  background: rgba(34, 26, 22, 0.78);
+  padding: 2rem;
+  border-radius: 1.5rem;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #d6803b;
+  font-size: 0.8rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.5rem, 7vw, 4.5rem);
+  line-height: 0.95;
+}
+
+.copy {
+  margin: 1rem 0 0;
+  color: rgba(244, 239, 226, 0.8);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
