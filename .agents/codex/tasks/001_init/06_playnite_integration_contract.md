@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -40,12 +40,12 @@ Finalize and support the Gumo API contract expected by the future Playnite `Libr
 
 ## Tracking Checklist
 
-- [ ] Playnite resource serializers implemented
-- [ ] Metadata patch endpoints implemented
-- [ ] Install manifest implemented
-- [ ] Save restore manifest implemented
-- [ ] Token auth implemented
-- [ ] Editability rules enforced
+- [x] Playnite resource serializers implemented
+- [x] Metadata patch endpoints implemented
+- [x] Install manifest implemented
+- [x] Save restore manifest implemented
+- [x] Token auth implemented
+- [x] Editability rules enforced
 
 ## Blockers
 
@@ -54,3 +54,6 @@ Finalize and support the Gumo API contract expected by the future Playnite `Libr
 ## Notes
 
 - Treat Playnite as the primary metadata source in v1.
+- Implemented in `backend/src/playnite.rs`, `backend/src/api/auth.rs`, and `backend/src/api/routes/integration.rs`.
+- Verified with `nix develop --command cargo test --manifest-path backend/Cargo.toml`.
+- Verified with `nix build .#gumo-backend`.

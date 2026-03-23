@@ -1,18 +1,24 @@
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::middleware;
+use axum::response::Response;
 use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
-use serde::Deserialize;
 
+use crate::api::auth;
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
-use crate::api::types::{json, AcknowledgedResponse, JobResource, ListResponse, UploadResource};
+use crate::api::types::{
+    json, GameSummaryResource, InstallManifestResource, JobResource,
+    ListResponse, SaveRestoreManifestResource, SaveSnapshotResource, UploadResource,
+};
+use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{
     self, CreateGamePayloadUploadRequest, CreateSaveSnapshotUploadRequest, ListQuery,
 };
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/games", get(list_games))
         .route("/games/:id", get(get_game).patch(patch_game))
@@ -31,51 +37,61 @@ pub fn router() -> Router<AppState> {
         .route("/uploads/save-snapshots", post(create_save_upload))
         .route("/jobs", get(list_jobs))
         .route("/jobs/:id", get(get_job))
+        .route_layer(middleware::from_fn_with_state(
+            state,
+            auth::require_integration_token,
+        ))
 }
 
-#[derive(Debug, Deserialize)]
-struct PatchPayload {
-    #[serde(flatten)]
-    fields: serde_json::Map<String, serde_json::Value>,
-}
-
-async fn list_games() -> Json<ListResponse<serde_json::Value>> {
-    json(ListResponse {
-        items: vec![],
+async fn list_games(
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<GameSummaryResource>>, ApiError> {
+    let items = playnite::list_games(&state).await?;
+    Ok(json(ListResponse {
+        items,
         next_cursor: None,
-    })
+    }))
 }
 
-async fn get_game(Path(id): Path<String>) -> Result<Json<serde_json::Value>, ApiError> {
-    Err(ApiError::not_found("game", &id))
+async fn get_game(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<GameSummaryResource>, ApiError> {
+    Ok(Json(playnite::get_game(&state, &id).await?))
 }
 
 async fn patch_game(
-    Path(_id): Path<String>,
-    State(_state): State<AppState>,
-    Json(payload): Json<PatchPayload>,
-) -> Result<Json<AcknowledgedResponse>, ApiError> {
-    let _ = payload.fields.len();
-    Err(ApiError::not_implemented("playnite game patch"))
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<PatchGameRequest>,
+) -> Result<Json<GameSummaryResource>, ApiError> {
+    Ok(Json(playnite::patch_game(&state, &id, payload).await?))
 }
 
 async fn patch_version(
-    Path(_id): Path<String>,
-    Json(payload): Json<PatchPayload>,
-) -> Result<Json<AcknowledgedResponse>, ApiError> {
-    let _ = payload.fields.len();
-    Err(ApiError::not_implemented("playnite version patch"))
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<PatchVersionRequest>,
+) -> Result<Json<crate::api::types::GameVersionResource>, ApiError> {
+    Ok(Json(playnite::patch_version(&state, &id, payload).await?))
 }
 
-async fn get_install_manifest(Path(_id): Path<String>) -> Result<Json<serde_json::Value>, ApiError> {
-    Err(ApiError::not_implemented("install manifest"))
+async fn get_install_manifest(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<InstallManifestResource>, ApiError> {
+    Ok(Json(playnite::get_install_manifest(&state, &id).await?))
 }
 
-async fn list_save_snapshots(Path(_id): Path<String>) -> Json<ListResponse<serde_json::Value>> {
-    json(ListResponse {
-        items: vec![],
+async fn list_save_snapshots(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<SaveSnapshotResource>>, ApiError> {
+    let items = playnite::list_save_snapshots(&state, &id).await?;
+    Ok(json(ListResponse {
+        items,
         next_cursor: None,
-    })
+    }))
 }
 
 async fn create_game_payload_upload(
@@ -147,18 +163,23 @@ async fn get_job(
     Ok(Json(upload_jobs::get_job(&state, &id).await?))
 }
 
-async fn download_artifact(Path(_id): Path<String>) -> Result<Json<AcknowledgedResponse>, ApiError> {
-    Err(ApiError::not_implemented("artifact download"))
+async fn download_artifact(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    playnite::download_artifact(&state, &id).await
 }
 
 async fn get_save_restore_manifest(
-    Path(_id): Path<String>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    Err(ApiError::not_implemented("save restore manifest"))
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<SaveRestoreManifestResource>, ApiError> {
+    Ok(Json(playnite::get_save_restore_manifest(&state, &id).await?))
 }
 
 async fn download_save_snapshot(
-    Path(_id): Path<String>,
-) -> Result<Json<AcknowledgedResponse>, ApiError> {
-    Err(ApiError::not_implemented("save snapshot download"))
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    playnite::download_save_snapshot(&state, &id).await
 }

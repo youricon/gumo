@@ -12,7 +12,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .nest("/api", public::router())
-        .nest("/api/integrations/playnite", integration::router())
+        .nest("/api/integrations/playnite", integration::router(state.clone()))
         .nest("/api/admin", admin::router())
         .with_state(state)
 }

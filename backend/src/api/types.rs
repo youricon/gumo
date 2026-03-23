@@ -1,5 +1,5 @@
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ListResponse<T> {
@@ -49,6 +49,56 @@ pub struct GameSummaryResource {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GameVersionResource {
+    pub id: String,
+    pub game_id: String,
+    pub library_id: String,
+    pub version_name: String,
+    pub version_code: Option<String>,
+    pub release_date: Option<String>,
+    pub is_latest: bool,
+    pub notes: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactPartResource {
+    pub part_index: i32,
+    pub download_url: String,
+    pub size_bytes: u64,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactResource {
+    pub id: String,
+    pub game_version_id: String,
+    pub archive_type: String,
+    pub size_bytes: u64,
+    pub checksum: String,
+    pub part_count: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<ArtifactPartResource>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SaveSnapshotResource {
+    pub id: String,
+    pub game_id: String,
+    pub game_version_id: String,
+    pub library_id: String,
+    pub name: String,
+    pub captured_at: String,
+    pub archive_type: String,
+    pub size_bytes: u64,
+    pub checksum: String,
+    pub notes: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkResource {
     pub name: String,
     pub url: String,
@@ -105,6 +155,54 @@ pub struct ResourceError {
 #[derive(Debug, Clone, Serialize)]
 pub struct AcknowledgedResponse {
     pub status: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallManifestResource {
+    pub game: InstallGameResource,
+    pub version: InstallVersionResource,
+    pub artifact: InstallArtifactResource,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallGameResource {
+    pub id: String,
+    pub name: String,
+    pub platforms: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallVersionResource {
+    pub id: String,
+    pub version_name: String,
+    pub is_latest: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallArtifactResource {
+    pub id: String,
+    pub archive_type: String,
+    pub size_bytes: u64,
+    pub checksum: String,
+    pub parts: Vec<ArtifactPartResource>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SaveRestoreManifestResource {
+    pub game_id: String,
+    pub game_version_id: String,
+    pub save_snapshot: SaveSnapshotManifestResource,
+    pub parts: Vec<ArtifactPartResource>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SaveSnapshotManifestResource {
+    pub id: String,
+    pub name: String,
+    pub captured_at: String,
+    pub archive_type: String,
+    pub size_bytes: u64,
+    pub checksum: String,
 }
 
 pub fn json<T: Serialize>(value: T) -> Json<T> {

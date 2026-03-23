@@ -567,6 +567,7 @@ dependencies = [
  "anyhow",
  "axum",
  "hex",
+ "http-body-util",
  "rust-embed",
  "serde",
  "serde_json",
