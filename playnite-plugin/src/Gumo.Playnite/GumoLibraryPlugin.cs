@@ -396,35 +396,18 @@ namespace Gumo.Playnite
             }
         }
 
-        private Game RunGameUploadImport(GlobalProgressActionArgs progressArgs, UploadSourceSelection source)
+        private Game RunGameUploadImport(
+            GlobalProgressActionArgs progressArgs,
+            UploadSourceSelection source,
+            GumoLibrary library,
+            string gameName,
+            string versionName)
         {
-            var cancellationToken = progressArgs.CancelToken;
             progressArgs.Text = "Preparing upload";
             progressArgs.CurrentProgressValue = 0;
 
             using (var client = CreateApiClient())
             {
-                var library = SelectLibrary(client, cancellationToken);
-                if (library == null)
-                {
-                    return null;
-                }
-
-                var gameName = PromptRequiredString(
-                    "Game name",
-                    "Gumo",
-                    source.DefaultGameName);
-                if (gameName == null)
-                {
-                    return null;
-                }
-
-                var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
-                if (versionName == null)
-                {
-                    return null;
-                }
-
                 var completedJob = UploadGameSourceToGumo(
                     client,
                     source,
@@ -570,11 +553,37 @@ namespace Gumo.Playnite
                     return;
                 }
 
+                GumoLibrary library;
+                using (var client = CreateApiClient())
+                {
+                    var libraries = LoadLibrariesWithProgress(client, "Loading Gumo libraries");
+                    library = SelectLibraryFromList(libraries);
+                }
+                if (library == null)
+                {
+                    return;
+                }
+
+                var gameName = PromptRequiredString(
+                    "Game name",
+                    "Gumo",
+                    source.DefaultGameName);
+                if (gameName == null)
+                {
+                    return;
+                }
+
+                var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
+                if (versionName == null)
+                {
+                    return;
+                }
+
                 Game importedGame = null;
                 var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
                     progressArgs =>
                     {
-                        importedGame = RunGameUploadImport(progressArgs, source);
+                        importedGame = RunGameUploadImport(progressArgs, source, library, gameName, versionName);
                     },
                     new GlobalProgressOptions("Uploading game to Gumo", true)
                     {
@@ -756,14 +765,19 @@ namespace Gumo.Playnite
 
             try
             {
+                GumoLibrary library;
                 using (var client = CreateApiClient())
                 {
-                    var library = SelectLibrary(client, CancellationToken.None);
-                    if (library == null)
-                    {
-                        return;
-                    }
+                    var libraries = LoadLibrariesWithProgress(client, "Loading Gumo libraries");
+                    library = SelectLibraryFromList(libraries);
+                }
+                if (library == null)
+                {
+                    return;
+                }
 
+                using (var client = CreateApiClient())
+                {
                     var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
                         progressArgs =>
                         {
@@ -1190,14 +1204,40 @@ namespace Gumo.Playnite
             return selected;
         }
 
-        private GumoLibrary SelectLibrary(GumoApiClient client, CancellationToken cancellationToken)
+        private List<GumoLibrary> LoadLibrariesWithProgress(GumoApiClient client, string title)
         {
-            var libraries = client.GetLibrariesAsync(cancellationToken)
-                .GetAwaiter()
-                .GetResult()
-                .Where(library => library.Enabled)
-                .ToList();
+            List<GumoLibrary> libraries = null;
+            var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                progressArgs =>
+                {
+                    progressArgs.Text = "Loading Gumo libraries";
+                    libraries = client.GetLibrariesAsync(progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult()
+                        .Where(library => library.Enabled)
+                        .ToList();
+                },
+                new GlobalProgressOptions(title, true)
+                {
+                    IsIndeterminate = true,
+                });
 
+            if (result.Canceled)
+            {
+                Logger.Info("Gumo library loading canceled.");
+                return null;
+            }
+
+            if (result.Error != null)
+            {
+                throw result.Error;
+            }
+
+            return libraries ?? new List<GumoLibrary>();
+        }
+
+        private GumoLibrary SelectLibraryFromList(IReadOnlyList<GumoLibrary> libraries)
+        {
             if (libraries.Count == 0)
             {
                 PlayniteApi.Dialogs.ShowErrorMessage("No enabled Gumo libraries are available for uploads.", "Gumo");
