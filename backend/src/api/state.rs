@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::Arc;
 
 use axum::Router;
@@ -15,12 +16,23 @@ pub struct AppState {
 pub struct SharedState {
     pub config: AppConfig,
     pub db: SqlitePool,
+    pub admin_sessions: Mutex<std::collections::HashMap<String, AdminSession>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdminSession {
+    pub username: String,
+    pub expires_at_unix: u64,
 }
 
 impl AppState {
     pub fn new(config: AppConfig, db: SqlitePool) -> Self {
         Self {
-            shared: Arc::new(SharedState { config, db }),
+            shared: Arc::new(SharedState {
+                config,
+                db,
+                admin_sessions: Mutex::new(std::collections::HashMap::new()),
+            }),
         }
     }
 
@@ -30,6 +42,12 @@ impl AppState {
 
     pub fn db(&self) -> &SqlitePool {
         &self.shared.db
+    }
+
+    pub fn admin_sessions(
+        &self,
+    ) -> &Mutex<std::collections::HashMap<String, AdminSession>> {
+        &self.shared.admin_sessions
     }
 }
 

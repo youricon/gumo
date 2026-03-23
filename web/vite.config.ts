@@ -6,5 +6,11 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 4173,
+    proxy: {
+      "/api": {
+        target: process.env.GUMO_API_ORIGIN ?? "http://127.0.0.1:8080",
+        changeOrigin: true,
+      },
+    },
   },
 });

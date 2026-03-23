@@ -14,15 +14,22 @@ let
     };
   };
 
-  web = pkgs.stdenvNoCC.mkDerivation {
+  web = pkgs.buildNpmPackage {
     pname = "gumo-web";
     version = "0.1.0";
     src = ../web;
+    npmDepsHash = "sha256-P7GxJvl9ztQYda8Q4csOlWoFMkYY/k+TzQWGjsIYZS8=";
+
+    buildPhase = ''
+      runHook preBuild
+      npm run build
+      runHook postBuild
+    '';
 
     installPhase = ''
       runHook preInstall
       mkdir -p "$out/share/gumo/web"
-      cp -r ./* "$out/share/gumo/web/"
+      cp -r dist/* "$out/share/gumo/web/"
       runHook postInstall
     '';
   };

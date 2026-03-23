@@ -58,18 +58,42 @@ pub struct PatchVersionRequest {
 }
 
 pub async fn list_games(state: &AppState) -> Result<Vec<GameSummaryResource>, ApiError> {
-    let rows = sqlx::query(
-        r#"
+    list_games_filtered(state, None).await
+}
+
+pub async fn list_games_filtered(
+    state: &AppState,
+    visibility: Option<&str>,
+) -> Result<Vec<GameSummaryResource>, ApiError> {
+    let rows = if let Some(visibility) = visibility {
+        sqlx::query(
+            r#"
+        SELECT public_id, name, sorting_name, description, release_date, visibility,
+               cover_image, background_image, icon, created_at, updated_at
+        FROM games
+        WHERE visibility = ?1
+        ORDER BY updated_at DESC
+        LIMIT 100
+        "#,
+        )
+        .bind(visibility)
+        .fetch_all(state.db())
+        .await
+        .map_err(internal_error)?
+    } else {
+        sqlx::query(
+            r#"
         SELECT public_id, name, sorting_name, description, release_date, visibility,
                cover_image, background_image, icon, created_at, updated_at
         FROM games
         ORDER BY updated_at DESC
         LIMIT 100
         "#,
-    )
-    .fetch_all(state.db())
-    .await
-    .map_err(internal_error)?;
+        )
+        .fetch_all(state.db())
+        .await
+        .map_err(internal_error)?
+    };
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
@@ -81,6 +105,40 @@ pub async fn list_games(state: &AppState) -> Result<Vec<GameSummaryResource>, Ap
 
 pub async fn get_game(state: &AppState, game_id: &str) -> Result<GameSummaryResource, ApiError> {
     load_game_resource(state.db(), game_id).await
+}
+
+pub async fn list_versions_for_game(
+    state: &AppState,
+    game_id: &str,
+) -> Result<Vec<GameVersionResource>, ApiError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT gv.public_id
+        FROM game_versions gv
+        INNER JOIN games g ON g.id = gv.game_id
+        WHERE g.public_id = ?1
+        ORDER BY gv.is_latest DESC, gv.release_date DESC, gv.created_at DESC
+        "#,
+    )
+    .bind(game_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    let mut versions = Vec::with_capacity(rows.len());
+    for row in rows {
+        let version_id: String = row.get("public_id");
+        versions.push(load_version_resource(state.db(), &version_id).await?);
+    }
+    Ok(versions)
+}
+
+pub async fn list_genres(state: &AppState) -> Result<Vec<String>, ApiError> {
+    let rows = sqlx::query("SELECT name FROM genres ORDER BY name ASC")
+        .fetch_all(state.db())
+        .await
+        .map_err(internal_error)?;
+    Ok(rows.into_iter().map(|row| row.get("name")).collect())
 }
 
 pub async fn patch_game(

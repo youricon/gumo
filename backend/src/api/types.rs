@@ -13,6 +13,13 @@ pub struct HealthResponse {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AdminSessionResource {
+    pub authenticated: bool,
+    pub mode: String,
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PlatformResource {
     pub id: String,
     pub enabled: bool,

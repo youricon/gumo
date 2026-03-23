@@ -30,7 +30,7 @@ This directory tracks the initial implementation plan for Gumo.
 | 04 | Backend API Scaffold | Completed | 01, 02, 03 |
 | 05 | Uploads And Jobs | Completed | 03, 04 |
 | 06 | Playnite Integration Contract | Completed | 02, 04, 05 |
-| 07 | Web Catalog And Admin | Not started | 04, 05 |
+| 07 | Web Catalog And Admin | Completed | 04, 05 |
 | 08 | NixOS And Verification | Not started | 01, 03, 04, 05, 07 |
 
 ## Notes
