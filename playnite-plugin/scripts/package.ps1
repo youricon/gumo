@@ -210,6 +210,7 @@ $artifactBaseName = "$($manifest.Id)-$safeVersion"
 $stagingDir = Join-Path $outputRoot $artifactBaseName
 $packageRootDir = Join-Path $stagingDir $manifest.Id
 $artifactPath = Join-Path $outputRoot "$artifactBaseName.pext"
+$toolboxZipPath = Join-Path $outputRoot "$artifactBaseName.toolbox.zip"
 $rebuiltZipPath = Join-Path $outputRoot "$artifactBaseName.rebuilt.zip"
 
 if (Test-Path $stagingDir) {
@@ -222,6 +223,10 @@ if (Test-Path $artifactPath) {
 
 if (Test-Path $rebuiltZipPath) {
     Remove-Item -Force $rebuiltZipPath
+}
+
+if (Test-Path $toolboxZipPath) {
+    Remove-Item -Force $toolboxZipPath
 }
 
 Get-ChildItem -Path $outputRoot -Filter "$($manifest.Id)*.pext" -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -264,7 +269,8 @@ if (Test-Path $toolboxExtractDir) {
     Remove-Item -Recurse -Force $toolboxExtractDir
 }
 
-Expand-Archive -Path $toolboxArtifactPath -DestinationPath $toolboxExtractDir -Force
+Copy-Item -Path $toolboxArtifactPath -Destination $toolboxZipPath -Force
+Expand-Archive -Path $toolboxZipPath -DestinationPath $toolboxExtractDir -Force
 $extractedPackageRoot = Resolve-ExtractedPackageRoot -ExtractedDir $toolboxExtractDir
 
 Get-ChildItem -Path $packageRootDir -File | ForEach-Object {
@@ -274,6 +280,7 @@ Get-ChildItem -Path $packageRootDir -File | ForEach-Object {
 Compress-Archive -Path (Join-Path $toolboxExtractDir "*") -DestinationPath $rebuiltZipPath -CompressionLevel Optimal
 Move-Item -Path $rebuiltZipPath -Destination $artifactPath -Force
 Remove-Item -Force $toolboxArtifactPath
+Remove-Item -Force $toolboxZipPath
 
 $artifactSize = (Get-Item $artifactPath).Length
 
