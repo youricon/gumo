@@ -1269,9 +1269,117 @@ namespace Gumo.Playnite
             var versions = client.GetVersionsAsync(gameId, CancellationToken.None).GetAwaiter().GetResult();
             var metadata = GumoMapper.ToGameMetadata(game, versions);
             var imported = PlayniteApi.Database.ImportGame(metadata, this);
+            if (imported != null)
+            {
+                SyncImportedGameMedia(client, imported, game, CancellationToken.None);
+            }
 
             Logger.Info($"Imported uploaded Gumo game '{game.Name}' into Playnite.");
             return imported ?? GumoMapper.ToDatabaseGame(game, versions, Id);
+        }
+
+        private void SyncImportedGameMedia(
+            GumoApiClient client,
+            Game importedGame,
+            GumoGame gumoGame,
+            CancellationToken cancellationToken)
+        {
+            var changed = false;
+
+            var coverImageId = DownloadMediaToPlayniteFile(client, gumoGame.CoverImage, importedGame.Id, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(coverImageId) && !string.Equals(importedGame.CoverImage, coverImageId, StringComparison.Ordinal))
+            {
+                RemoveDatabaseFileIfManaged(importedGame.CoverImage);
+                importedGame.CoverImage = coverImageId;
+                changed = true;
+            }
+
+            var iconId = DownloadMediaToPlayniteFile(client, gumoGame.Icon, importedGame.Id, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(iconId) && !string.Equals(importedGame.Icon, iconId, StringComparison.Ordinal))
+            {
+                RemoveDatabaseFileIfManaged(importedGame.Icon);
+                importedGame.Icon = iconId;
+                changed = true;
+            }
+
+            var backgroundImageId = DownloadMediaToPlayniteFile(client, gumoGame.BackgroundImage, importedGame.Id, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(backgroundImageId) && !string.Equals(importedGame.BackgroundImage, backgroundImageId, StringComparison.Ordinal))
+            {
+                RemoveDatabaseFileIfManaged(importedGame.BackgroundImage);
+                importedGame.BackgroundImage = backgroundImageId;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                PlayniteApi.Database.Games.Update(importedGame);
+            }
+        }
+
+        private string DownloadMediaToPlayniteFile(
+            GumoApiClient client,
+            string mediaUrl,
+            Guid gameId,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(mediaUrl))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(mediaUrl);
+            if (string.IsNullOrWhiteSpace(extension))
+            {
+                extension = ".bin";
+            }
+
+            var tempPath = Path.Combine(
+                Path.GetTempPath(),
+                $"gumo-media-{Guid.NewGuid():N}{extension}");
+
+            try
+            {
+                client.DownloadToFileAsync(mediaUrl, tempPath, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                return PlayniteApi.Database.AddFile(tempPath, gameId);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                    {
+                        File.Delete(tempPath);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Logger.Warn($"Failed to delete temporary Gumo media file '{tempPath}': {exception.Message}");
+                }
+            }
+        }
+
+        private void RemoveDatabaseFileIfManaged(string fileId)
+        {
+            if (string.IsNullOrWhiteSpace(fileId))
+            {
+                return;
+            }
+
+            if (Uri.TryCreate(fileId, UriKind.Absolute, out _))
+            {
+                return;
+            }
+
+            try
+            {
+                PlayniteApi.Database.RemoveFile(fileId);
+            }
+            catch (Exception exception)
+            {
+                Logger.Warn($"Failed to remove Playnite-managed media file '{fileId}': {exception.Message}");
+            }
         }
 
         private GumoGameVersion SelectVersionForInstall(Game game, List<GumoGameVersion> versions)
