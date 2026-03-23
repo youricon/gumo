@@ -56,6 +56,7 @@ Release packaging:
 ```
 
 This produces a `.pext` artifact under `playnite-plugin\artifacts\`.
+The script uses Playnite's `Toolbox.exe` to generate the package. If Toolbox is not on `PATH`, pass `-ToolboxPath` explicitly.
 
 Reference:
 

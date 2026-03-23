@@ -3,6 +3,7 @@ param(
     [string]$Configuration = "Release",
     [string]$ProjectPath = ".\\src\\Gumo.Playnite\\Gumo.Playnite.csproj",
     [string]$OutputRoot = ".\\artifacts",
+    [string]$ToolboxPath = "",
     [switch]$SkipBuild
 )
 
@@ -43,6 +44,36 @@ function Resolve-MSBuildPath {
     }
 
     throw "MSBuild.exe was not found. Install Visual Studio 2022 or Build Tools with the MSBuild component."
+}
+
+function Resolve-ToolboxPath {
+    param(
+        [string]$ExplicitPath
+    )
+
+    if ($ExplicitPath) {
+        $resolved = Resolve-Path $ExplicitPath -ErrorAction Stop
+        return $resolved.Path
+    }
+
+    $command = Get-Command Toolbox.exe -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $fallbacks = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Playnite\Toolbox.exe"),
+        (Join-Path $env:ProgramFiles "Playnite\Toolbox.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Playnite\Toolbox.exe")
+    )
+
+    foreach ($candidate in $fallbacks) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "Toolbox.exe was not found. Install Playnite or pass -ToolboxPath <path-to-Toolbox.exe>."
 }
 
 function Get-ProjectPropertyValue {
@@ -156,11 +187,9 @@ New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $safeVersion = $manifest.Version -replace '[^0-9A-Za-z._-]', '_'
 $artifactBaseName = "$($manifest.Id)-$safeVersion"
-$packageRootName = $manifest.Id
 $stagingDir = Join-Path $outputRoot $artifactBaseName
-$packageRootDir = Join-Path $stagingDir $packageRootName
+$packageRootDir = Join-Path $stagingDir $manifest.Id
 $artifactPath = Join-Path $outputRoot "$artifactBaseName.pext"
-$zipArtifactPath = Join-Path $outputRoot "$artifactBaseName.zip"
 
 if (Test-Path $stagingDir) {
     Remove-Item -Recurse -Force $stagingDir
@@ -168,10 +197,6 @@ if (Test-Path $stagingDir) {
 
 if (Test-Path $artifactPath) {
     Remove-Item -Force $artifactPath
-}
-
-if (Test-Path $zipArtifactPath) {
-    Remove-Item -Force $zipArtifactPath
 }
 
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
@@ -192,8 +217,15 @@ if (-not (Test-Path (Join-Path $packageRootDir "extension.yaml"))) {
     Copy-Item -Path $manifestPath -Destination (Join-Path $packageRootDir "extension.yaml") -Force
 }
 
-Compress-Archive -Path $packageRootDir -DestinationPath $zipArtifactPath -CompressionLevel Optimal
-Move-Item -Path $zipArtifactPath -Destination $artifactPath
+$toolboxPath = Resolve-ToolboxPath -ExplicitPath $ToolboxPath
+& $toolboxPath pack $packageRootDir $outputRoot
+
+$toolboxArtifactPath = Join-Path $outputRoot "$($manifest.Id).pext"
+if (-not (Test-Path $toolboxArtifactPath)) {
+    throw "Toolbox did not produce the expected package: $toolboxArtifactPath"
+}
+
+Move-Item -Path $toolboxArtifactPath -Destination $artifactPath -Force
 
 $artifactSize = (Get-Item $artifactPath).Length
 
@@ -201,6 +233,7 @@ Write-Host "Packaged Playnite extension:"
 Write-Host "  Artifact: $artifactPath"
 Write-Host "  Version:  $($manifest.Version)"
 Write-Host "  Module:   $($manifest.Module)"
+Write-Host "  Toolbox:  $toolboxPath"
 Write-Host "  Size:     $artifactSize bytes"
 
 Write-Host ""

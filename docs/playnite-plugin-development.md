@@ -330,7 +330,7 @@ The packaging script now:
 
 - builds the plugin in the requested configuration
 - stages the manifest and required assemblies from `bin\<Configuration>\`
-- creates a versioned `.pext` archive in `playnite-plugin\artifacts\`
+- uses Playnite's `Toolbox.exe` to create a versioned `.pext` archive in `playnite-plugin\artifacts\`
 
 `install-dev.ps1` remains the fast local iteration path.
 
@@ -351,6 +351,12 @@ Example:
 ```powershell
 cd C:\dev\gumo\playnite-plugin
 .\scripts\package.ps1 -Configuration Release
+```
+
+If `Toolbox.exe` is not discovered automatically, pass it explicitly:
+
+```powershell
+.\scripts\package.ps1 -Configuration Release -ToolboxPath "$env:LOCALAPPDATA\Programs\Playnite\Toolbox.exe"
 ```
 
 Use `-Configuration`, not `--Configuration`, when invoking the PowerShell script.

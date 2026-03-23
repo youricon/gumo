@@ -6,7 +6,7 @@ Near-term intent:
 
 - keep Playnite packaging logic in-repo
 - package from Windows
-- use Toolbox or a custom PowerShell script to produce `.pext` artifacts
+- use Playnite `Toolbox.exe` from the in-repo PowerShell script to produce `.pext` artifacts
 
 Current packaging entrypoint:
 
