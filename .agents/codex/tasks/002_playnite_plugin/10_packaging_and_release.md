@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress
+Completed
 
 ## Goal
 
@@ -39,11 +39,11 @@ Create a reliable Windows-side packaging flow for distributable Playnite plugin 
 
 - [x] Packaging script added
 - [x] Release build documented
-- [ ] Artifact format validated
-- [ ] Clean install validation documented
+- [x] Artifact format validated
+- [x] Clean install validation documented
 
 ## Notes
 
 - Windows is the only required release path.
 - `scripts/package.ps1` now builds `Release`, stages the manifest and assemblies, and produces `artifacts/<ExtensionId>-<Version>.pext`.
-- Remaining work is Windows-side clean install validation from the packaged artifact.
+- The packaged plugin has been validated in Playnite and installs successfully.

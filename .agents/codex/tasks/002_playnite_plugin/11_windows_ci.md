@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -35,12 +35,15 @@ Automate Windows-side build and packaging for the Playnite plugin.
 
 ## Tracking Checklist
 
-- [ ] Windows workflow added
-- [ ] Release build automated
-- [ ] Packaging automated
-- [ ] Artifact upload added
-- [ ] Path filters reviewed
+- [x] Windows workflow added
+- [x] Release build automated
+- [x] Packaging automated
+- [x] Artifact upload added
+- [x] Path filters reviewed
 
 ## Notes
 
 - Keep plugin CI isolated from the Nix-first service pipeline.
+- Workflow added at `.github/workflows/playnite-plugin-windows.yml`.
+- It restores `playnite-plugin/Gumo`, builds `Release`, downloads the latest Playnite `.7z` asset to obtain `Toolbox.exe`, runs the packaging script, and uploads the `.pext` artifact.
+- Remaining work is CI runtime validation after the workflow runs in GitHub Actions.

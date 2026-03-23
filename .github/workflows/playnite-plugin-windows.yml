@@ -1,0 +1,75 @@
+name: Playnite Plugin Windows
+
+on:
+  push:
+    paths:
+      - "playnite-plugin/**"
+      - ".agents/codex/tasks/002_playnite_plugin/**"
+      - "docs/playnite-plugin-development.md"
+      - "docs/architecture.md"
+  pull_request:
+    paths:
+      - "playnite-plugin/**"
+      - ".agents/codex/tasks/002_playnite_plugin/**"
+      - "docs/playnite-plugin-development.md"
+      - "docs/architecture.md"
+  workflow_dispatch:
+
+jobs:
+  build-package:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: playnite-plugin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore Toolbox Project
+        run: nuget restore .\Gumo\Gumo.sln
+
+      - name: Build Release
+        run: msbuild .\Gumo\Gumo.sln /t:Build /p:Configuration=Release
+
+      - name: Download Playnite For Toolbox
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/JosefNemec/Playnite/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match '^\d+\.\d+\.7z$' } | Select-Object -First 1
+          if (-not $asset) {
+              throw "Could not find a Playnite .7z asset in the latest release."
+          }
+
+          $downloadPath = Join-Path $env:RUNNER_TEMP $asset.name
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath
+
+          $extractDir = Join-Path $env:RUNNER_TEMP "playnite"
+          if (Test-Path $extractDir) {
+              Remove-Item -Recurse -Force $extractDir
+          }
+
+          7z x $downloadPath "-o$extractDir" -y | Out-Null
+
+          $toolboxPath = Join-Path $extractDir "Toolbox.exe"
+          if (-not (Test-Path $toolboxPath)) {
+              throw "Toolbox.exe was not found after extracting Playnite."
+          }
+
+          "GUMO_TOOLBOX_PATH=$toolboxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Package Plugin
+        run: .\scripts\package.ps1 -Configuration Release -ToolboxPath $env:GUMO_TOOLBOX_PATH
+
+      - name: Upload Packaged Plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: gumo-playnite-plugin
+          path: playnite-plugin/artifacts/*.pext
+          if-no-files-found: error
