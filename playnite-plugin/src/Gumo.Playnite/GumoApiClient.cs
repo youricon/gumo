@@ -14,6 +14,7 @@ namespace Gumo.Playnite
     public sealed class GumoApiClient : IDisposable
     {
         private static readonly ILogger Logger = LogManager.GetLogger();
+        private static readonly HttpMethod PatchMethod = new HttpMethod("PATCH");
         private readonly HttpClient httpClient;
         private readonly string serverUrl;
 
@@ -60,7 +61,7 @@ namespace Gumo.Playnite
             CancellationToken cancellationToken)
         {
             return SendJsonAsync<GumoGameVersion>(
-                HttpMethod.Patch,
+                PatchMethod,
                 $"/api/integrations/playnite/versions/{Uri.EscapeDataString(versionId)}",
                 payload,
                 cancellationToken);
@@ -72,7 +73,7 @@ namespace Gumo.Playnite
             CancellationToken cancellationToken)
         {
             return SendJsonAsync<GumoGame>(
-                HttpMethod.Patch,
+                PatchMethod,
                 $"/api/integrations/playnite/games/{Uri.EscapeDataString(gameId)}",
                 payload,
                 cancellationToken);
