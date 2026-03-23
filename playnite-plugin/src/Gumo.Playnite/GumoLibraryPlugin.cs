@@ -1116,24 +1116,24 @@ namespace Gumo.Playnite
                 }
             }
 
-            var dialog = new OpenFileDialog
+            var fileDialog = new OpenFileDialog
             {
                 Title = "Select game file or archive to upload to Gumo",
                 CheckFileExists = true,
                 Multiselect = false,
             };
 
-            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.FileName))
+            if (fileDialog.ShowDialog() != true || string.IsNullOrWhiteSpace(fileDialog.FileName))
             {
                 return null;
             }
 
             return new UploadSourceSelection
             {
-                Path = dialog.FileName,
+                Path = fileDialog.FileName,
                 IsDirectory = false,
-                DefaultGameName = Path.GetFileNameWithoutExtension(dialog.FileName),
-                DisplayName = Path.GetFileName(dialog.FileName),
+                DefaultGameName = Path.GetFileNameWithoutExtension(fileDialog.FileName),
+                DisplayName = Path.GetFileName(fileDialog.FileName),
             };
         }
 
