@@ -1070,7 +1070,8 @@ namespace Gumo.Playnite
                 GumoSaveSnapshot selectedSnapshot;
                 using (var client = CreateApiClient())
                 {
-                    selectedSnapshot = SelectSaveSnapshotForRestore(client, installed.VersionId, game.Name);
+                    var snapshots = LoadSaveSnapshotsWithProgress(client, installed.VersionId, game.Name);
+                    selectedSnapshot = SelectSaveSnapshotForRestore(snapshots, game.Name);
                 }
 
                 if (selectedSnapshot == null)
@@ -1781,18 +1782,46 @@ namespace Gumo.Playnite
             }
         }
 
-        private GumoSaveSnapshot SelectSaveSnapshotForRestore(
+        private List<GumoSaveSnapshot> LoadSaveSnapshotsWithProgress(
             GumoApiClient client,
             string versionId,
             string gameName)
         {
-            var snapshots = client.GetSaveSnapshotsAsync(versionId, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult()
-                .OrderByDescending(snapshot => snapshot.CapturedAt)
-                .ToList();
+            List<GumoSaveSnapshot> snapshots = null;
+            var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                progressArgs =>
+                {
+                    progressArgs.Text = $"Loading save snapshots for {gameName}";
+                    snapshots = client.GetSaveSnapshotsAsync(versionId, progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult()
+                        .OrderByDescending(snapshot => snapshot.CapturedAt)
+                        .ToList();
+                },
+                new GlobalProgressOptions("Loading Gumo save snapshots", true)
+                {
+                    IsIndeterminate = true,
+                });
 
-            if (snapshots.Count == 0)
+            if (result.Canceled)
+            {
+                Logger.Info("Gumo save snapshot loading canceled.");
+                return null;
+            }
+
+            if (result.Error != null)
+            {
+                throw result.Error;
+            }
+
+            return snapshots ?? new List<GumoSaveSnapshot>();
+        }
+
+        private GumoSaveSnapshot SelectSaveSnapshotForRestore(
+            IReadOnlyList<GumoSaveSnapshot> snapshots,
+            string gameName)
+        {
+            if (snapshots == null || snapshots.Count == 0)
             {
                 PlayniteApi.Dialogs.ShowErrorMessage(
                     $"No save snapshots are available for {gameName}.",
