@@ -25,6 +25,18 @@ These paths are local-only and must not be assumed by packaged deployments.
 
 The backend and frontend should remain runnable independently in development.
 
+## Playnite Plugin
+
+The Playnite plugin should live in the same monorepo under `playnite-plugin/`.
+
+Plugin workflow policy:
+
+- NixOS-side plugin compilation is optional and best-effort only
+- Windows is the primary plugin development environment
+- Windows CI or a Windows VM should be used for release builds
+
+Detailed guidance is in [playnite-plugin-development.md](/home/isaac/workspace/gumo/docs/playnite-plugin-development.md).
+
 ## Configuration
 
 The example development config lives at `config/gumo.example.toml`.

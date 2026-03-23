@@ -28,6 +28,14 @@ This gives:
 - clear separation between domain/backend logic and UI
 - reproducible development and build workflows through Nix
 
+The Playnite plugin should stay in the same monorepo as a separate client project under `playnite-plugin/`.
+
+Plugin build policy:
+
+- try Linux-side compilation only as a convenience for iteration
+- do not require NixOS to produce release-grade plugin artifacts
+- treat Windows builds as the source of truth for Playnite development and release packaging
+
 ## System Shape
 
 ### 1. Backend
