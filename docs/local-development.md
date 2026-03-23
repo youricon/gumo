@@ -8,12 +8,14 @@ Use `./.local/gumo/` for development-only writable state:
 
 - `./.local/gumo/config.toml`
 - `./.local/gumo/data/`
-- `./.local/gumo/assets/`
-- `./.local/gumo/storage/`
+- `./.local/gumo/cache/`
+- `./.local/gumo/library/`
 - `./.local/gumo/secrets/`
 - `./.local/gumo/tmp/`
 
 These paths are local-only and must not be assumed by packaged deployments.
+
+`./.local/gumo/library/` is typically used as the `root_path` of the default development library.
 
 ## Development Workflow
 
@@ -42,3 +44,9 @@ Detailed guidance is in [playnite-plugin-development.md](/home/isaac/workspace/g
 The example development config lives at `config/gumo.example.toml`.
 
 Copy it into `./.local/gumo/config.toml` before running the backend. The dev init app performs that copy automatically if the config file is absent.
+
+## Cache Directory
+
+`storage.cache_dir` is reserved for local cached/generated runtime files such as downloaded artwork, thumbnails, image derivatives, and future metadata cache files.
+
+At the moment it is mostly a forward-looking runtime path rather than a heavily used feature path, but it is still useful to keep it explicit so packaged deployments do not rely on writing into the install directory.

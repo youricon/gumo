@@ -11,8 +11,7 @@ let
     };
     storage = {
       database_path = "${cfg.dataDir}/data/gumo.db";
-      asset_dir = "${cfg.dataDir}/assets";
-      managed_storage_dir = "${cfg.dataDir}/storage";
+      cache_dir = "${cfg.dataDir}/cache";
       temp_dir = "${cfg.dataDir}/tmp";
       split_part_size_bytes = 2147483648;
       deduplicate_by_checksum = true;
@@ -32,6 +31,7 @@ let
   };
   finalSettings = lib.recursiveUpdate defaultSettings cfg.settings;
   renderedConfig = tomlFormat.generate "gumo.toml" finalSettings;
+  libraryDirs = map (library: library.root_path) (finalSettings.libraries or [ ]);
 in
 {
   options.services.gumo = {
@@ -133,11 +133,10 @@ in
     systemd.tmpfiles.rules = [
       "d ${cfg.dataDir} 0750 ${cfg.user} ${cfg.group} -"
       "d ${cfg.dataDir}/data 0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/assets 0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.dataDir}/storage 0750 ${cfg.user} ${cfg.group} -"
+      "d ${cfg.dataDir}/cache 0750 ${cfg.user} ${cfg.group} -"
       "d ${cfg.dataDir}/tmp 0750 ${cfg.user} ${cfg.group} -"
       "d ${cfg.dataDir}/secrets 0750 ${cfg.user} ${cfg.group} -"
-    ];
+    ] ++ map (path: "d ${path} 0750 ${cfg.user} ${cfg.group} -") libraryDirs;
 
     systemd.services.gumo = {
       description = "Gumo backend service";

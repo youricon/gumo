@@ -2451,8 +2451,8 @@ For deployment, mounted paths should be enough:
 Typical runtime paths:
 
 - `/var/lib/gumo/gumo.db`
-- `/var/lib/gumo/assets`
-- `/var/lib/gumo/storage`
+- `/var/lib/gumo/cache`
+- `/var/lib/gumo/library`
 
 OCI support should remain possible by keeping the config model app-native rather than module-native.
 
@@ -2469,8 +2469,8 @@ Development workflow assumptions:
 Suggested local paths:
 
 - `./.local/gumo/data/`
-- `./.local/gumo/assets/`
-- `./.local/gumo/storage/`
+- `./.local/gumo/cache/`
+- `./.local/gumo/library/`
 
 This allows realistic local testing without deploying the NixOS module or touching production storage.
 
@@ -2553,8 +2553,7 @@ Purpose:
 Fields:
 
 - `database_path`
-- `asset_dir`
-- `managed_storage_dir`
+- `cache_dir`
 - `temp_dir` optional
 - `archive_format`
 - `split_part_size_bytes`
@@ -2562,8 +2561,8 @@ Fields:
 
 Important rules:
 
-- `database_path`, `asset_dir`, and `managed_storage_dir` must be explicit
-- managed storage lives outside the install directory
+- `database_path` and `cache_dir` must be explicit
+- each library `root_path` is its managed storage root
 - split archive behavior is a storage policy, not a platform policy by default
 
 ### `auth`
@@ -2660,8 +2659,7 @@ port = 8080
 
 [storage]
 database_path = "./.local/gumo/data/gumo.db"
-asset_dir = "./.local/gumo/assets"
-managed_storage_dir = "./.local/gumo/storage"
+cache_dir = "./.local/gumo/cache"
 archive_format = "zip"
 split_part_size_bytes = 2147483648
 deduplicate_by_checksum = true
@@ -2683,7 +2681,7 @@ match_priority = 100
 
 [[libraries]]
 name = "managed-pc"
-root_path = "./.local/gumo/storage"
+root_path = "./.local/gumo/library"
 platform = "pc"
 enabled = true
 visibility = "private"
@@ -2773,7 +2771,7 @@ gumo/
       db/
       metadata/
       jobs/
-      assets/
+      cache/
       auth/
   web/
     package.json

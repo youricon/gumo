@@ -34,8 +34,8 @@ let
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
       mkdir -p ./.local/gumo/data
-      mkdir -p ./.local/gumo/assets
-      mkdir -p ./.local/gumo/storage
+      mkdir -p ./.local/gumo/cache
+      mkdir -p ./.local/gumo/library
       mkdir -p ./.local/gumo/secrets
       mkdir -p ./.local/gumo/tmp
 

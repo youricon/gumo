@@ -4,8 +4,7 @@ port = 8080
 
 [storage]
 database_path = "./.local/gumo/data/gumo.db"
-asset_dir = "./.local/gumo/assets"
-managed_storage_dir = "./.local/gumo/storage"
+cache_dir = "./.local/gumo/cache"
 temp_dir = "./.local/gumo/tmp"
 split_part_size_bytes = 2147483648
 deduplicate_by_checksum = true
@@ -30,7 +29,7 @@ match_priority = 100
 
 [[libraries]]
 name = "primary"
-root_path = "./.local/gumo/storage"
+root_path = "./.local/gumo/library"
 platform = "pc"
 visibility = "private"
 enabled = true

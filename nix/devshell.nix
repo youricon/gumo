@@ -5,8 +5,8 @@ let
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
       mkdir -p ./.local/gumo/data
-      mkdir -p ./.local/gumo/assets
-      mkdir -p ./.local/gumo/storage
+      mkdir -p ./.local/gumo/cache
+      mkdir -p ./.local/gumo/library
       mkdir -p ./.local/gumo/secrets
       mkdir -p ./.local/gumo/tmp
 
@@ -38,8 +38,8 @@ in
       export GUMO_LOCAL_ROOT="$PWD/.local/gumo"
       export GUMO_CONFIG_PATH="$GUMO_LOCAL_ROOT/config.toml"
       export GUMO_DATA_DIR="$GUMO_LOCAL_ROOT/data"
-      export GUMO_ASSET_DIR="$GUMO_LOCAL_ROOT/assets"
-      export GUMO_STORAGE_DIR="$GUMO_LOCAL_ROOT/storage"
+      export GUMO_CACHE_DIR="$GUMO_LOCAL_ROOT/cache"
+      export GUMO_LIBRARY_DIR="$GUMO_LOCAL_ROOT/library"
     '';
   };
 }

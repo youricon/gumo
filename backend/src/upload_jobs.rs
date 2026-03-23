@@ -1173,7 +1173,14 @@ fn upload_temp_path(state: &AppState, upload_public_id: &str) -> PathBuf {
         .storage
         .temp_dir
         .clone()
-        .unwrap_or_else(|| state.config().storage.managed_storage_dir.join("tmp"));
+        .unwrap_or_else(|| {
+            state
+                .config()
+                .libraries
+                .first()
+                .map(|library| library.root_path.join("tmp"))
+                .unwrap_or_else(|| PathBuf::from("./tmp"))
+        });
     root.join(format!("{upload_public_id}.upload"))
 }
 
@@ -1299,8 +1306,7 @@ port = 8080
 
 [storage]
 database_path = "{}"
-asset_dir = "{}"
-managed_storage_dir = "{}"
+cache_dir = "{}"
 temp_dir = "{}"
 
 [auth]
@@ -1327,8 +1333,7 @@ visibility = "private"
 enabled = true
 "#,
             root.join("data/gumo.db").display(),
-            root.join("assets").display(),
-            root.join("storage").display(),
+            root.join("cache").display(),
             root.join("tmp").display(),
             root.join("secrets").display(),
             root.join("secrets").display(),

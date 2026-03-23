@@ -47,13 +47,7 @@ impl AppConfig {
             true,
             &mut errors,
         );
-        validate_path("storage.asset_dir", &self.storage.asset_dir, false, &mut errors);
-        validate_path(
-            "storage.managed_storage_dir",
-            &self.storage.managed_storage_dir,
-            false,
-            &mut errors,
-        );
+        validate_path("storage.cache_dir", &self.storage.cache_dir, false, &mut errors);
         if let Some(temp_dir) = &self.storage.temp_dir {
             validate_path("storage.temp_dir", temp_dir, false, &mut errors);
         }
@@ -163,8 +157,7 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StorageConfig {
     pub database_path: PathBuf,
-    pub asset_dir: PathBuf,
-    pub managed_storage_dir: PathBuf,
+    pub cache_dir: PathBuf,
     #[serde(default)]
     pub temp_dir: Option<PathBuf>,
     #[serde(default = "default_split_part_size_bytes")]
@@ -315,8 +308,7 @@ port = 8080
 
 [storage]
 database_path = "./gumo.db"
-asset_dir = "./assets"
-managed_storage_dir = "./storage"
+cache_dir = "./cache"
 
 [auth]
 admin_mode = "local"
@@ -356,8 +348,7 @@ port = 8080
 
 [storage]
 database_path = "./gumo.db"
-asset_dir = "./assets"
-managed_storage_dir = "./storage"
+cache_dir = "./cache"
 
 [auth]
 admin_mode = "proxy"

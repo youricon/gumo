@@ -98,8 +98,7 @@ pub async fn foreign_keys_enabled(pool: &SqlitePool) -> Result<bool> {
 
 fn ensure_runtime_dirs(storage: &StorageConfig) -> Result<()> {
     ensure_parent_dir(&storage.database_path)?;
-    ensure_dir(&storage.asset_dir)?;
-    ensure_dir(&storage.managed_storage_dir)?;
+    ensure_dir(&storage.cache_dir)?;
     if let Some(temp_dir) = &storage.temp_dir {
         ensure_dir(temp_dir)?;
     }
@@ -171,8 +170,7 @@ port = 8080
 
 [storage]
 database_path = "{}"
-asset_dir = "{}"
-managed_storage_dir = "{}"
+cache_dir = "{}"
 temp_dir = "{}"
 
 [auth]
@@ -199,8 +197,7 @@ visibility = "private"
 enabled = true
 "#,
             root.join("data/gumo.db").display(),
-            root.join("assets").display(),
-            root.join("storage").display(),
+            root.join("cache").display(),
             root.join("tmp").display(),
             root.join("secrets").display(),
             root.join("secrets").display(),
