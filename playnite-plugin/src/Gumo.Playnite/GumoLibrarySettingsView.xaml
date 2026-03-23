@@ -6,6 +6,7 @@
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
@@ -23,10 +24,16 @@
               Content="Import only public Gumo games"
               IsChecked="{Binding ImportPublicGamesOnly}" />
 
-    <TextBlock Grid.Row="3"
+    <StackPanel Grid.Row="3" Margin="0,12,0,0" Orientation="Horizontal">
+      <Button Content="Test connection"
+              Padding="12,4"
+              Click="OnTestConnectionClick" />
+    </StackPanel>
+
+    <TextBlock Grid.Row="4"
                Margin="0,12,0,0"
                TextWrapping="Wrap"
                Foreground="Gray"
-               Text="This is an initial scaffold. Sync, upload, install, and save flows are not implemented yet." />
+               Text="Use the main menu action to upload new game archives to Gumo. Sync, install, and save flows remain in progress." />
   </Grid>
 </UserControl>

@@ -25,7 +25,7 @@ namespace Gumo.Playnite
             Properties = new LibraryPluginProperties
             {
                 HasSettings = true,
-                HasCustomizedGameImport = true,
+                HasCustomizedGameImport = false,
             };
         }
 
@@ -77,52 +77,21 @@ namespace Gumo.Playnite
 
         public override IEnumerable<Game> ImportGames(LibraryImportGamesArgs args)
         {
-            if (!settings.HasConnectionSettings())
-            {
-                PlayniteApi.Dialogs.ShowErrorMessage(
-                    "Configure the Gumo server URL and API token before uploading a game.",
-                    "Gumo");
-                return Array.Empty<Game>();
-            }
-
-            try
-            {
-                Game importedGame = null;
-                PlayniteApi.Dialogs.ActivateGlobalProgress(
-                    progressArgs =>
-                    {
-                        importedGame = RunGameUploadImport(progressArgs.CancelToken);
-                    },
-                    new GlobalProgressOptions("Uploading game archive to Gumo", true)
-                    {
-                        IsIndeterminate = false,
-                    });
-
-                if (importedGame != null)
-                {
-                    return new[] { importedGame };
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                Logger.Info("Gumo upload import canceled.");
-            }
-            catch (GumoApiException exception)
-            {
-                var message =
-                    $"Failed to upload game archive to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
-                Logger.Error(message);
-                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
-            }
-            catch (Exception exception)
-            {
-                Logger.Error($"Unexpected failure during Gumo upload import: {exception}");
-                PlayniteApi.Dialogs.ShowErrorMessage(
-                    "Unexpected failure during Gumo upload import. See the plugin log for details.",
-                    "Gumo");
-            }
-
+            Logger.Info("Gumo customized import hook is disabled. Use the main menu upload action instead.");
             return Array.Empty<Game>();
+        }
+
+        public override IEnumerable<MainMenuItem> GetMainMenuItems(GetMainMenuItemsArgs args)
+        {
+            return new[]
+            {
+                new MainMenuItem
+                {
+                    Description = "Upload game archive to Gumo",
+                    MenuSection = "@",
+                    Action = _ => UploadGameArchiveFromMenu(),
+                }
+            };
         }
 
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
@@ -154,7 +123,7 @@ namespace Gumo.Playnite
 
         public override UserControl GetSettingsView(bool firstRunSettings)
         {
-            return new GumoLibrarySettingsView(settings);
+            return new GumoLibrarySettingsView(this, settings);
         }
 
         public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
@@ -185,6 +154,42 @@ namespace Gumo.Playnite
             }
 
             return new GumoApiClient(settings.NormalizedServerUrl(), settings.ApiToken);
+        }
+
+        internal void TestConnectionFromSettings()
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure a valid Gumo server URL and API token first.",
+                    "Gumo");
+                return;
+            }
+
+            try
+            {
+                using (var client = CreateApiClient())
+                {
+                    var gameCount = client.ProbeAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    PlayniteApi.Dialogs.ShowMessage(
+                        $"Connection succeeded. Gumo returned {gameCount} visible game(s).",
+                        "Gumo");
+                }
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Connection failed: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure while testing Gumo connection: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Unexpected failure while testing the Gumo connection. See the plugin log for details.",
+                    "Gumo");
+            }
         }
 
         private async Task ProbeConnectionAsync(CancellationToken cancellationToken)
@@ -301,6 +306,56 @@ namespace Gumo.Playnite
                 var imported = WaitForCompletedUpload(client, pending, cancellationToken);
                 RemovePendingUpload(pending.UploadId);
                 return imported;
+            }
+        }
+
+        private void UploadGameArchiveFromMenu()
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before uploading a game.",
+                    "Gumo");
+                return;
+            }
+
+            try
+            {
+                Game importedGame = null;
+                PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        importedGame = RunGameUploadImport(progressArgs.CancelToken);
+                    },
+                    new GlobalProgressOptions("Uploading game archive to Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (importedGame != null)
+                {
+                    PlayniteApi.Dialogs.ShowMessage(
+                        $"Uploaded and imported '{importedGame.Name}' from Gumo.",
+                        "Gumo");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Gumo upload import canceled.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to upload game archive to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo upload import: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Unexpected failure during Gumo upload import. See the plugin log for details.",
+                    "Gumo");
             }
         }
 
