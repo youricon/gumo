@@ -14,7 +14,10 @@ use zip::write::SimpleFileOptions;
 
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
-use crate::api::types::{JobProgress, JobResource, ResourceError, UploadResource};
+use crate::api::types::{
+    ImportSessionResource, JobProgress, JobResource, ResourceError, UploadPartResource,
+    UploadResource,
+};
 
 const ACTIVE_UPLOAD_RETENTION_HOURS: i64 = 24;
 const COMPLETED_UPLOAD_RETENTION_HOURS: i64 = 72;
@@ -33,6 +36,17 @@ pub struct CreateGamePayloadUploadRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CreateGamePayloadImportSessionRequest {
+    pub library_id: String,
+    pub platform: String,
+    pub game: GameUploadTarget,
+    pub version: VersionUploadTarget,
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateSaveSnapshotUploadRequest {
     pub game_version_id: String,
     pub name: String,
@@ -41,6 +55,25 @@ pub struct CreateSaveSnapshotUploadRequest {
     pub notes: Option<String>,
     #[serde(default)]
     pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateSaveSnapshotImportSessionRequest {
+    pub game_version_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateImportPartRequest {
+    #[serde(default)]
+    pub part_index: Option<u32>,
+    pub file: UploadFileDescriptor,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,6 +150,43 @@ struct UploadRow {
     created_at: String,
     updated_at: String,
     intent_payload: String,
+}
+
+#[derive(Debug, Clone)]
+struct ImportSessionRow {
+    id: i64,
+    public_id: String,
+    kind: String,
+    library_id: i64,
+    platform_id: Option<i64>,
+    game_id: Option<i64>,
+    game_version_id: Option<i64>,
+    state: String,
+    job_id: Option<i64>,
+    expires_at: Option<String>,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    created_at: String,
+    updated_at: String,
+    intent_payload: String,
+}
+
+#[derive(Debug, Clone)]
+struct UploadPartRow {
+    id: i64,
+    public_id: String,
+    import_session_id: i64,
+    part_index: i64,
+    state: String,
+    filename: String,
+    declared_size_bytes: i64,
+    received_size_bytes: i64,
+    checksum: Option<String>,
+    temp_path: String,
+    error_code: Option<String>,
+    error_message: Option<String>,
+    created_at: String,
+    updated_at: String,
 }
 
 #[derive(Debug, Clone)]
@@ -278,6 +348,309 @@ pub async fn create_save_snapshot_upload(
     .map_err(internal_error)?;
 
     upload_to_resource(upload_from_row(row))
+}
+
+pub async fn create_game_payload_import_session(
+    state: &AppState,
+    request: CreateGamePayloadImportSessionRequest,
+) -> Result<ImportSessionResource, ApiError> {
+    validate_game_target(&request.game)?;
+
+    if let Some(idempotency_key) = &request.idempotency_key {
+        if let Some(existing) =
+            find_import_session_by_idempotency_key(state.db(), "game_payload", idempotency_key).await?
+        {
+            return import_session_to_resource(state.db(), existing).await;
+        }
+    }
+
+    let library = lookup_library(state.db(), &request.library_id).await?;
+    let platform = lookup_platform(state.db(), &request.platform).await?;
+    let public_id = prefixed_id("ims");
+    let intent = UploadIntent::GamePayload {
+        library_public_id: request.library_id.clone(),
+        platform: request.platform.clone(),
+        game: request.game.clone(),
+        version: request.version.clone(),
+        file: UploadFileDescriptor {
+            filename: String::new(),
+            size_bytes: 0,
+            checksum: None,
+        },
+    };
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO import_sessions (
+          public_id, kind, library_id, platform_id, game_id, game_version_id, state, job_id,
+          idempotency_key, intent_payload, expires_at, error_code, error_message, created_at, updated_at
+        )
+        VALUES (?1, 'game_payload', ?2, ?3, NULL, NULL, 'created', NULL, ?4, ?5,
+                datetime('now', '+24 hours'), NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *
+        "#,
+    )
+    .bind(&public_id)
+    .bind(library.id)
+    .bind(platform.id)
+    .bind(&request.idempotency_key)
+    .bind(serde_json::to_string(&intent).map_err(internal_error)?)
+    .fetch_one(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    import_session_to_resource(state.db(), import_session_from_row(row)).await
+}
+
+pub async fn create_save_snapshot_import_session(
+    state: &AppState,
+    request: CreateSaveSnapshotImportSessionRequest,
+) -> Result<ImportSessionResource, ApiError> {
+    if let Some(idempotency_key) = &request.idempotency_key {
+        if let Some(existing) =
+            find_import_session_by_idempotency_key(state.db(), "save_snapshot", idempotency_key).await?
+        {
+            return import_session_to_resource(state.db(), existing).await;
+        }
+    }
+
+    let game_version =
+        lookup_game_version_with_library(state.db(), &request.game_version_id).await?;
+    let platform_id = lookup_platform_id_for_library(state.db(), game_version.library_id).await?;
+    let public_id = prefixed_id("ims");
+    let intent = UploadIntent::SaveSnapshot {
+        game_version_public_id: request.game_version_id.clone(),
+        name: request.name.clone(),
+        file: UploadFileDescriptor {
+            filename: String::new(),
+            size_bytes: 0,
+            checksum: None,
+        },
+        notes: request.notes.clone(),
+    };
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO import_sessions (
+          public_id, kind, library_id, platform_id, game_id, game_version_id, state, job_id,
+          idempotency_key, intent_payload, expires_at, error_code, error_message, created_at, updated_at
+        )
+        VALUES (?1, 'save_snapshot', ?2, ?3, ?4, ?5, 'created', NULL, ?6, ?7,
+                datetime('now', '+24 hours'), NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *
+        "#,
+    )
+    .bind(&public_id)
+    .bind(game_version.library_id)
+    .bind(platform_id)
+    .bind(game_version.game_id)
+    .bind(game_version.id)
+    .bind(&request.idempotency_key)
+    .bind(serde_json::to_string(&intent).map_err(internal_error)?)
+    .fetch_one(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    import_session_to_resource(state.db(), import_session_from_row(row)).await
+}
+
+pub async fn create_import_part(
+    state: &AppState,
+    import_session_public_id: &str,
+    request: CreateImportPartRequest,
+) -> Result<UploadPartResource, ApiError> {
+    if request.file.size_bytes == 0 {
+        return Err(ApiError::bad_request("file.size_bytes must be greater than 0"));
+    }
+
+    let session = get_import_session_row(state.db(), import_session_public_id).await?;
+    validate_upload_state(&session.state, &["created", "uploading", "uploaded", "abandoned"])?;
+
+    let part_index = match request.part_index {
+        Some(value) => i64::from(value),
+        None => next_import_part_index(state.db(), session.id).await?,
+    };
+    let public_id = prefixed_id("prt");
+    let temp_path = upload_temp_path(state, &public_id);
+    let row = sqlx::query(
+        r#"
+        INSERT INTO upload_parts (
+          public_id, import_session_id, part_index, state, filename, declared_size_bytes,
+          received_size_bytes, checksum, temp_path, error_code, error_message, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, 'created', ?4, ?5, 0, ?6, ?7, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *
+        "#,
+    )
+    .bind(&public_id)
+    .bind(session.id)
+    .bind(part_index)
+    .bind(&request.file.filename)
+    .bind(i64::try_from(request.file.size_bytes).map_err(|_| ApiError::bad_request("file.size_bytes is too large"))?)
+    .bind(&request.file.checksum)
+    .bind(temp_path.to_string_lossy().to_string())
+    .fetch_one(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        "UPDATE import_sessions SET state = 'uploading', updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+    )
+    .bind(session.id)
+    .execute(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    upload_part_to_resource(upload_part_from_row(row))
+}
+
+pub async fn put_import_part_content(
+    state: &AppState,
+    upload_part_public_id: &str,
+    body: Bytes,
+) -> Result<UploadPartResource, ApiError> {
+    let part = get_upload_part_row(state.db(), upload_part_public_id).await?;
+    validate_upload_state(&part.state, &["created", "abandoned"])?;
+
+    sqlx::query(
+        "UPDATE upload_parts SET state = 'uploading', updated_at = CURRENT_TIMESTAMP, error_code = NULL, error_message = NULL WHERE id = ?1",
+    )
+    .bind(part.id)
+    .execute(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    let temp_path = PathBuf::from(&part.temp_path);
+    if let Some(parent) = temp_path.parent() {
+        fs::create_dir_all(parent).map_err(internal_error)?;
+    }
+
+    if let Err(err) = fs::write(&temp_path, &body) {
+        mark_upload_part_abandoned(state.db(), part.id, "write_failed", &err.to_string()).await?;
+        return Err(ApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "upload_write_failed",
+            "failed to persist upload part content",
+        ));
+    }
+
+    let received_size = i64::try_from(body.len()).map_err(|_| ApiError::bad_request("upload body is too large"))?;
+    if received_size != part.declared_size_bytes {
+        mark_upload_part_abandoned(
+            state.db(),
+            part.id,
+            "size_mismatch",
+            "received upload size does not match declared size",
+        )
+        .await?;
+        return Err(ApiError::bad_request(
+            "received upload size does not match declared size",
+        ));
+    }
+
+    let row = sqlx::query(
+        r#"
+        UPDATE upload_parts
+        SET state = 'uploaded', received_size_bytes = ?2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?1
+        RETURNING *
+        "#,
+    )
+    .bind(part.id)
+    .bind(received_size)
+    .fetch_one(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    sync_import_session_upload_state(state.db(), part.import_session_id).await?;
+    upload_part_to_resource(upload_part_from_row(row))
+}
+
+pub async fn finalize_import_session(
+    state: &AppState,
+    import_session_public_id: &str,
+) -> Result<JobResource, ApiError> {
+    let session = get_import_session_row(state.db(), import_session_public_id).await?;
+    if let Some(job_id) = session.job_id {
+        let job = get_job_by_internal_id(state.db(), job_id)
+            .await
+            .map_err(internal_error)?;
+        return Ok(job_to_resource(job));
+    }
+
+    validate_upload_state(&session.state, &["uploaded"])?;
+    let parts = get_upload_parts_for_session(state.db(), session.id).await?;
+    if parts.is_empty() {
+        return Err(ApiError::bad_request("import session has no uploaded parts"));
+    }
+    if parts.iter().any(|part| part.state != "uploaded") {
+        return Err(ApiError::bad_request(
+            "all import-session parts must be uploaded before finalize",
+        ));
+    }
+    if parts.len() > 1 {
+        return Err(ApiError::bad_request(
+            "multi-part import-session execution is not implemented yet",
+        ));
+    }
+
+    let part = &parts[0];
+    let legacy_upload = materialize_legacy_upload_from_import_session(state, &session, part).await?;
+    let job = finalize_upload(state, &legacy_upload.public_id).await?;
+
+    let internal_job_id = sqlx::query_scalar::<_, i64>("SELECT id FROM jobs WHERE public_id = ?1")
+        .bind(&job.id)
+        .fetch_one(state.db())
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query(
+        "UPDATE import_sessions SET state = 'queued', job_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+    )
+    .bind(session.id)
+    .bind(internal_job_id)
+    .execute(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    Ok(job)
+}
+
+pub async fn get_import_session(
+    state: &AppState,
+    import_session_public_id: &str,
+) -> Result<ImportSessionResource, ApiError> {
+    let row = get_import_session_row(state.db(), import_session_public_id).await?;
+    import_session_to_resource(state.db(), row).await
+}
+
+pub async fn list_import_sessions(
+    state: &AppState,
+    query: ListQuery,
+) -> Result<Vec<ImportSessionResource>, ApiError> {
+    let scope = query.scope.as_deref().unwrap_or("recent");
+    let clause = upload_scope_clause(scope)?;
+    let sql =
+        format!("SELECT * FROM import_sessions WHERE {clause} ORDER BY updated_at DESC LIMIT 50");
+    let rows = sqlx::query(&sql)
+        .fetch_all(state.db())
+        .await
+        .map_err(internal_error)?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        items.push(import_session_to_resource(state.db(), import_session_from_row(row)).await?);
+    }
+    Ok(items)
+}
+
+pub async fn list_import_parts(
+    state: &AppState,
+    import_session_public_id: &str,
+) -> Result<Vec<UploadPartResource>, ApiError> {
+    let session = get_import_session_row(state.db(), import_session_public_id).await?;
+    let parts = get_upload_parts_for_session(state.db(), session.id).await?;
+    parts.into_iter().map(upload_part_to_resource).collect()
 }
 
 pub async fn put_upload_content(
@@ -796,6 +1169,24 @@ async fn mark_upload_abandoned(pool: &SqlitePool, upload_id: i64, code: &str, me
     Ok(())
 }
 
+async fn mark_upload_part_abandoned(
+    pool: &SqlitePool,
+    upload_part_id: i64,
+    code: &str,
+    message: &str,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        "UPDATE upload_parts SET state = 'abandoned', error_code = ?2, error_message = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+    )
+    .bind(upload_part_id)
+    .bind(code)
+    .bind(message)
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+    Ok(())
+}
+
 async fn find_upload_by_idempotency_key(
     pool: &SqlitePool,
     kind: &str,
@@ -811,6 +1202,117 @@ async fn find_upload_by_idempotency_key(
     .map_err(internal_error)?;
 
     Ok(row.map(upload_from_row))
+}
+
+async fn find_import_session_by_idempotency_key(
+    pool: &SqlitePool,
+    kind: &str,
+    idempotency_key: &str,
+) -> Result<Option<ImportSessionRow>, ApiError> {
+    let row = sqlx::query(
+        "SELECT * FROM import_sessions WHERE kind = ?1 AND idempotency_key = ?2 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(kind)
+    .bind(idempotency_key)
+    .fetch_optional(pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(row.map(import_session_from_row))
+}
+
+async fn next_import_part_index(pool: &SqlitePool, import_session_id: i64) -> Result<i64, ApiError> {
+    let next = sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT MAX(part_index) + 1 FROM upload_parts WHERE import_session_id = ?1",
+    )
+    .bind(import_session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+    Ok(next.unwrap_or(0))
+}
+
+async fn sync_import_session_upload_state(
+    pool: &SqlitePool,
+    import_session_id: i64,
+) -> Result<(), ApiError> {
+    let counts = sqlx::query(
+        r#"
+        SELECT
+          COUNT(*) AS part_count,
+          COALESCE(SUM(CASE WHEN state = 'uploaded' THEN 1 ELSE 0 END), 0) AS uploaded_part_count
+        FROM upload_parts
+        WHERE import_session_id = ?1
+        "#,
+    )
+    .bind(import_session_id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let part_count: i64 = counts.get("part_count");
+    let uploaded_part_count: i64 = counts.get("uploaded_part_count");
+    let state = if part_count > 0 && part_count == uploaded_part_count {
+        "uploaded"
+    } else {
+        "uploading"
+    };
+
+    sqlx::query("UPDATE import_sessions SET state = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
+        .bind(import_session_id)
+        .bind(state)
+        .execute(pool)
+        .await
+        .map_err(internal_error)?;
+    Ok(())
+}
+
+async fn materialize_legacy_upload_from_import_session(
+    state: &AppState,
+    session: &ImportSessionRow,
+    part: &UploadPartRow,
+) -> Result<UploadRow, ApiError> {
+    let legacy_public_id = prefixed_id("upl");
+    let row = sqlx::query(
+        r#"
+        INSERT INTO uploads (
+          public_id, kind, library_id, platform_id, game_id, game_version_id, state, filename,
+          declared_size_bytes, received_size_bytes, checksum, temp_path, job_id, idempotency_key,
+          expires_at, error_code, error_message, created_at, updated_at, intent_payload
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'uploaded', ?7, ?8, ?9, ?10, ?11, NULL, NULL, ?12, NULL, NULL,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?13)
+        RETURNING *
+        "#,
+    )
+    .bind(&legacy_public_id)
+    .bind(&session.kind)
+    .bind(session.library_id)
+    .bind(session.platform_id)
+    .bind(session.game_id)
+    .bind(session.game_version_id)
+    .bind(&part.filename)
+    .bind(part.declared_size_bytes)
+    .bind(part.received_size_bytes)
+    .bind(&part.checksum)
+    .bind(&part.temp_path)
+    .bind(&session.expires_at)
+    .bind(&session.intent_payload)
+    .fetch_one(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    Ok(upload_from_row(row))
+}
+
+fn map_job_state_to_import_session_state(job_state: &str) -> &'static str {
+    match job_state {
+        "pending" => "queued",
+        "processing" => "processing",
+        "completed" => "completed",
+        "failed" => "failed",
+        _ => "failed",
+    }
 }
 
 async fn lookup_library(pool: &SqlitePool, public_id: &str) -> Result<LibraryLookup, ApiError> {
@@ -921,12 +1423,49 @@ async fn get_upload_row(pool: &SqlitePool, public_id: &str) -> Result<UploadRow,
     Ok(upload_from_row(row))
 }
 
+async fn get_import_session_row(
+    pool: &SqlitePool,
+    public_id: &str,
+) -> Result<ImportSessionRow, ApiError> {
+    let row = sqlx::query("SELECT * FROM import_sessions WHERE public_id = ?1")
+        .bind(public_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| ApiError::not_found("import_session", public_id))?;
+    Ok(import_session_from_row(row))
+}
+
+async fn get_upload_part_row(pool: &SqlitePool, public_id: &str) -> Result<UploadPartRow, ApiError> {
+    let row = sqlx::query("SELECT * FROM upload_parts WHERE public_id = ?1")
+        .bind(public_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| ApiError::not_found("upload_part", public_id))?;
+    Ok(upload_part_from_row(row))
+}
+
 async fn get_upload_by_internal_id(pool: &SqlitePool, upload_id: i64) -> Result<UploadRow> {
     let row = sqlx::query("SELECT * FROM uploads WHERE id = ?1")
         .bind(upload_id)
         .fetch_one(pool)
         .await?;
     Ok(upload_from_row(row))
+}
+
+async fn get_upload_parts_for_session(
+    pool: &SqlitePool,
+    import_session_id: i64,
+) -> Result<Vec<UploadPartRow>, ApiError> {
+    let rows = sqlx::query(
+        "SELECT * FROM upload_parts WHERE import_session_id = ?1 ORDER BY part_index ASC",
+    )
+    .bind(import_session_id)
+    .fetch_all(pool)
+    .await
+    .map_err(internal_error)?;
+    Ok(rows.into_iter().map(upload_part_from_row).collect())
 }
 
 async fn get_job_row(pool: &SqlitePool, public_id: &str) -> Result<JobRow, ApiError> {
@@ -969,6 +1508,45 @@ fn upload_from_row(row: sqlx::sqlite::SqliteRow) -> UploadRow {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         intent_payload: row.get("intent_payload"),
+    }
+}
+
+fn import_session_from_row(row: sqlx::sqlite::SqliteRow) -> ImportSessionRow {
+    ImportSessionRow {
+        id: row.get("id"),
+        public_id: row.get("public_id"),
+        kind: row.get("kind"),
+        library_id: row.get("library_id"),
+        platform_id: row.get("platform_id"),
+        game_id: row.get("game_id"),
+        game_version_id: row.get("game_version_id"),
+        state: row.get("state"),
+        job_id: row.get("job_id"),
+        expires_at: row.get("expires_at"),
+        error_code: row.get("error_code"),
+        error_message: row.get("error_message"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        intent_payload: row.get("intent_payload"),
+    }
+}
+
+fn upload_part_from_row(row: sqlx::sqlite::SqliteRow) -> UploadPartRow {
+    UploadPartRow {
+        id: row.get("id"),
+        public_id: row.get("public_id"),
+        import_session_id: row.get("import_session_id"),
+        part_index: row.get("part_index"),
+        state: row.get("state"),
+        filename: row.get("filename"),
+        declared_size_bytes: row.get("declared_size_bytes"),
+        received_size_bytes: row.get("received_size_bytes"),
+        checksum: row.get("checksum"),
+        temp_path: row.get("temp_path"),
+        error_code: row.get("error_code"),
+        error_message: row.get("error_message"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -1017,6 +1595,91 @@ fn upload_to_resource(upload: UploadRow) -> Result<UploadResource, ApiError> {
             message: upload
                 .error_message
                 .unwrap_or_else(|| "upload failed".to_string()),
+            retryable: Some(retryable),
+        }),
+    })
+}
+
+async fn import_session_to_resource(
+    pool: &SqlitePool,
+    session: ImportSessionRow,
+) -> Result<ImportSessionResource, ApiError> {
+    let counts = sqlx::query(
+        r#"
+        SELECT
+          COUNT(*) AS part_count,
+          COALESCE(SUM(CASE WHEN state = 'uploaded' THEN 1 ELSE 0 END), 0) AS uploaded_part_count,
+          COALESCE(SUM(declared_size_bytes), 0) AS declared_size_bytes,
+          COALESCE(SUM(received_size_bytes), 0) AS received_size_bytes
+        FROM upload_parts
+        WHERE import_session_id = ?1
+        "#,
+    )
+    .bind(session.id)
+    .fetch_one(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let mut state = session.state.clone();
+    let mut error_code = session.error_code.clone();
+    let mut error_message = session.error_message.clone();
+    if let Some(job_id) = session.job_id {
+        if let Ok(job) = get_job_by_internal_id(pool, job_id).await {
+            state = map_job_state_to_import_session_state(&job.state).to_string();
+            if error_code.is_none() {
+                error_code = job.error_code.clone();
+                error_message = job.error_message.clone();
+            }
+        }
+    }
+
+    let retryable = matches!(state.as_str(), "abandoned" | "failed");
+    Ok(ImportSessionResource {
+        id: session.public_id,
+        kind: session.kind,
+        library_id: library_public_id(session.library_id),
+        platform: session
+            .platform_id
+            .map(|_| "pc".to_string())
+            .unwrap_or_else(|| "pc".to_string()),
+        game_id: session.game_id.map(game_public_id),
+        game_version_id: session.game_version_id.map(game_version_public_id),
+        state,
+        part_count: u32::try_from(counts.get::<i64, _>("part_count")).map_err(internal_error)?,
+        uploaded_part_count: u32::try_from(counts.get::<i64, _>("uploaded_part_count"))
+            .map_err(internal_error)?,
+        declared_size_bytes: u64::try_from(counts.get::<i64, _>("declared_size_bytes"))
+            .map_err(internal_error)?,
+        received_size_bytes: u64::try_from(counts.get::<i64, _>("received_size_bytes"))
+            .map_err(internal_error)?,
+        job_id: session.job_id.map(job_public_id),
+        created_at: timestamp_to_rfc3339(&session.created_at),
+        updated_at: timestamp_to_rfc3339(&session.updated_at),
+        expires_at: session.expires_at.map(|value| timestamp_to_rfc3339(&value)),
+        error: error_code.map(|code| ResourceError {
+            code,
+            message: error_message.unwrap_or_else(|| "import session failed".to_string()),
+            retryable: Some(retryable),
+        }),
+    })
+}
+
+fn upload_part_to_resource(part: UploadPartRow) -> Result<UploadPartResource, ApiError> {
+    let retryable = matches!(part.state.as_str(), "abandoned");
+    Ok(UploadPartResource {
+        id: part.public_id,
+        import_session_id: import_session_public_id(part.import_session_id),
+        part_index: u32::try_from(part.part_index).map_err(internal_error)?,
+        state: part.state,
+        filename: part.filename,
+        declared_size_bytes: u64::try_from(part.declared_size_bytes).map_err(internal_error)?,
+        received_size_bytes: u64::try_from(part.received_size_bytes).map_err(internal_error)?,
+        checksum: part.checksum,
+        created_at: timestamp_to_rfc3339(&part.created_at),
+        updated_at: timestamp_to_rfc3339(&part.updated_at),
+        error: part.error_code.map(|code| ResourceError {
+            code,
+            message: part.error_message.unwrap_or_else(|| "upload part failed".to_string()),
             retryable: Some(retryable),
         }),
     })
@@ -1230,6 +1893,10 @@ fn game_public_id(id: i64) -> String {
 
 fn game_version_public_id(id: i64) -> String {
     format!("version_row_{id}")
+}
+
+fn import_session_public_id(id: i64) -> String {
+    format!("import_session_row_{id}")
 }
 
 fn upload_public_id(id: i64) -> String {

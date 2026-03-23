@@ -185,6 +185,87 @@ namespace Gumo.Playnite
                 cancellationToken);
         }
 
+        public Task<GumoImportSession> CreateGamePayloadImportSessionAsync(
+            GumoCreateGamePayloadImportSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            return SendJsonAsync<GumoImportSession>(
+                HttpMethod.Post,
+                "/api/integrations/playnite/import-sessions/game-payloads",
+                request,
+                cancellationToken);
+        }
+
+        public Task<GumoImportSession> GetImportSessionAsync(
+            string importSessionId,
+            CancellationToken cancellationToken)
+        {
+            return GetAsync<GumoImportSession>(
+                $"/api/integrations/playnite/import-sessions/{Uri.EscapeDataString(importSessionId)}",
+                cancellationToken);
+        }
+
+        public async Task<List<GumoImportSession>> ListImportSessionsAsync(
+            CancellationToken cancellationToken)
+        {
+            var response = await GetAsync<GumoListResponse<GumoImportSession>>(
+                "/api/integrations/playnite/import-sessions?scope=recent",
+                cancellationToken);
+            return response.Items ?? new List<GumoImportSession>();
+        }
+
+        public Task<GumoUploadPart> CreateImportPartAsync(
+            string importSessionId,
+            GumoCreateImportPartRequest request,
+            CancellationToken cancellationToken)
+        {
+            return SendJsonAsync<GumoUploadPart>(
+                HttpMethod.Post,
+                $"/api/integrations/playnite/import-sessions/{Uri.EscapeDataString(importSessionId)}/parts",
+                request,
+                cancellationToken);
+        }
+
+        public async Task<List<GumoUploadPart>> ListImportPartsAsync(
+            string importSessionId,
+            CancellationToken cancellationToken)
+        {
+            var response = await GetAsync<GumoListResponse<GumoUploadPart>>(
+                $"/api/integrations/playnite/import-sessions/{Uri.EscapeDataString(importSessionId)}/parts",
+                cancellationToken);
+            return response.Items ?? new List<GumoUploadPart>();
+        }
+
+        public async Task<GumoUploadPart> PutImportPartContentAsync(
+            string uploadPartId,
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            // TODO: Replace this buffered upload path with true streaming from disk.
+            // The current ByteArrayContent approach reads the entire archive part into memory,
+            // which is acceptable only as a temporary bring-up path for smaller payloads.
+            var bytes = File.ReadAllBytes(filePath);
+            using (var content = new ByteArrayContent(bytes))
+            {
+                return await SendAsync<GumoUploadPart>(
+                    HttpMethod.Put,
+                    $"/api/integrations/playnite/upload-parts/{Uri.EscapeDataString(uploadPartId)}/content",
+                    content,
+                    cancellationToken);
+            }
+        }
+
+        public Task<GumoJob> FinalizeImportSessionAsync(
+            string importSessionId,
+            CancellationToken cancellationToken)
+        {
+            return SendAsync<GumoJob>(
+                HttpMethod.Post,
+                $"/api/integrations/playnite/import-sessions/{Uri.EscapeDataString(importSessionId)}/finalize",
+                new StringContent(string.Empty, Encoding.UTF8, "application/json"),
+                cancellationToken);
+        }
+
         public async Task<GumoUpload> PutUploadContentAsync(
             string uploadId,
             string filePath,

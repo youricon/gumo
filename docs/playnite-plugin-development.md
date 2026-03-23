@@ -214,9 +214,13 @@ Current identity/linkage rule:
 - imported Gumo games use the stable Gumo game ID as Playnite `GameId`
 - version display currently maps the preferred Gumo version into Playnite's `Version` field
 - metadata edits can be pushed back to Gumo through the game menu for Gumo-managed titles
-- custom import currently uploads a local payload file into Gumo as a new game/version pair
+- current implementation uploads a local payload file into Gumo as a new game/version pair
 - pending uploads persist `upload_id` and `job_id` locally so the plugin can resume job tracking after restart
 - startup recovery is non-destructive: it resumes job polling/finalization when possible, but it does not automatically re-upload file content from disk
+- target architecture is broader than the current implementation:
+  - the plugin should normalize folder, file, and multipart-archive selections into one archive-set model
+  - the plugin should package non-archive inputs on the client before upload
+  - the backend should store uploaded archive parts directly instead of re-archiving them
 
 ### Daily Iteration
 

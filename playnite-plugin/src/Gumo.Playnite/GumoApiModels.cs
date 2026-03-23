@@ -202,6 +202,93 @@ namespace Gumo.Playnite
         public GumoResourceError Error { get; set; }
     }
 
+    public sealed class GumoImportSession
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("kind")]
+        public string Kind { get; set; }
+
+        [JsonProperty("library_id")]
+        public string LibraryId { get; set; }
+
+        [JsonProperty("platform")]
+        public string Platform { get; set; }
+
+        [JsonProperty("game_id")]
+        public string GameId { get; set; }
+
+        [JsonProperty("game_version_id")]
+        public string GameVersionId { get; set; }
+
+        [JsonProperty("state")]
+        public string State { get; set; }
+
+        [JsonProperty("part_count")]
+        public int PartCount { get; set; }
+
+        [JsonProperty("uploaded_part_count")]
+        public int UploadedPartCount { get; set; }
+
+        [JsonProperty("declared_size_bytes")]
+        public long DeclaredSizeBytes { get; set; }
+
+        [JsonProperty("received_size_bytes")]
+        public long ReceivedSizeBytes { get; set; }
+
+        [JsonProperty("job_id")]
+        public string JobId { get; set; }
+
+        [JsonProperty("created_at")]
+        public string CreatedAt { get; set; }
+
+        [JsonProperty("updated_at")]
+        public string UpdatedAt { get; set; }
+
+        [JsonProperty("expires_at")]
+        public string ExpiresAt { get; set; }
+
+        [JsonProperty("error")]
+        public GumoResourceError Error { get; set; }
+    }
+
+    public sealed class GumoUploadPart
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("import_session_id")]
+        public string ImportSessionId { get; set; }
+
+        [JsonProperty("part_index")]
+        public int PartIndex { get; set; }
+
+        [JsonProperty("state")]
+        public string State { get; set; }
+
+        [JsonProperty("filename")]
+        public string Filename { get; set; }
+
+        [JsonProperty("declared_size_bytes")]
+        public long DeclaredSizeBytes { get; set; }
+
+        [JsonProperty("received_size_bytes")]
+        public long ReceivedSizeBytes { get; set; }
+
+        [JsonProperty("checksum")]
+        public string Checksum { get; set; }
+
+        [JsonProperty("created_at")]
+        public string CreatedAt { get; set; }
+
+        [JsonProperty("updated_at")]
+        public string UpdatedAt { get; set; }
+
+        [JsonProperty("error")]
+        public GumoResourceError Error { get; set; }
+    }
+
     public sealed class GumoJobProgress
     {
         [JsonProperty("phase")]
@@ -446,5 +533,32 @@ namespace Gumo.Playnite
 
         [JsonProperty("idempotency_key")]
         public string IdempotencyKey { get; set; }
+    }
+
+    public sealed class GumoCreateGamePayloadImportSessionRequest
+    {
+        [JsonProperty("library_id")]
+        public string LibraryId { get; set; }
+
+        [JsonProperty("platform")]
+        public string Platform { get; set; }
+
+        [JsonProperty("game")]
+        public GumoUploadGameTarget Game { get; set; }
+
+        [JsonProperty("version")]
+        public GumoUploadVersionTarget Version { get; set; }
+
+        [JsonProperty("idempotency_key")]
+        public string IdempotencyKey { get; set; }
+    }
+
+    public sealed class GumoCreateImportPartRequest
+    {
+        [JsonProperty("part_index")]
+        public int? PartIndex { get; set; }
+
+        [JsonProperty("file")]
+        public GumoUploadFileDescriptor File { get; set; }
     }
 }

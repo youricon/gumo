@@ -264,12 +264,19 @@ All game payloads enter the system through managed imports.
 
 Managed import flow:
 
-1. Receive a game payload from an admin workflow or external integration.
-2. Create or match the logical `game`.
-3. Create a `game_version`.
-4. Archive the payload into managed storage.
-5. Split the archive into parts when it exceeds the configured size threshold.
+1. Receive a logical import session from an admin workflow or external integration.
+2. Accept one or more uploaded archive parts for that session.
+3. Create or match the logical `game`.
+4. Create a `game_version`.
+5. Persist the uploaded archive parts directly into managed storage.
 6. Persist artifact and part metadata.
+
+Long-term rule:
+
+- Gumo should store uploaded archive parts as the managed artifact set.
+- Gumo should not re-archive payloads on the server unless an explicit future feature requires it.
+
+This matters because source content may be very large. A single game may be hundreds of gigabytes, and client-side source material may already exist as a multipart archive set. The upload contract should preserve that shape instead of forcing the backend to rebuild it.
 
 Save import and restore are related but separate flows.
 
@@ -277,8 +284,8 @@ Save snapshot flow:
 
 1. Playnite identifies the local save state for an installed game version.
 2. The plugin creates a save snapshot upload targeting a specific `game_version`.
-3. Gumo stores the uploaded save state as one full-state archive.
-4. If necessary, Gumo splits the archive into parts.
+3. The plugin packages the save state into one or more archive parts if needed.
+4. Gumo stores the uploaded save archive set directly.
 5. Gumo creates the snapshot record and returns the resulting metadata.
 
 ## Metadata Strategy
@@ -409,9 +416,9 @@ Recommended upload flow:
    - `version_name`
    - optional `version_code`
    - optional notes
-6. The plugin uploads the payload to Gumo.
-7. Gumo stores the upload as a managed archive in the target library.
-8. If the payload exceeds the configured threshold, Gumo splits the archive into parts.
+6. The plugin normalizes the selected source into an archive set.
+7. The plugin uploads one or more archive parts to Gumo as one logical version import.
+8. Gumo stores that archive set directly in the target library.
 9. Gumo creates:
    - or updates the `game`
    - a `game_version`
@@ -423,7 +430,72 @@ Important import rules:
 - imports must always target a specific library
 - version creation must be explicit, not guessed implicitly from file names alone
 - imports should be idempotent where practical, using checksums and version metadata to avoid accidental duplicates
-- archive creation happens server-side, not in the Playnite plugin
+- client-side packaging should normalize all source inputs into an archive set before upload
+
+### Client Packaging Model
+
+The Playnite plugin should normalize all import sources into the same final concept:
+
+- one logical version import
+- one archive set
+- one or more ordered archive parts
+
+This should apply to all source modes:
+
+- single archive file
+- multipart archive file set
+- single non-archive file
+- folder/directory
+
+Recommended normalization rules:
+
+- If the selection is a single archive file in a supported format, upload it as a one-part archive set.
+- If the selection is a multipart archive set, upload those parts as-is.
+- If the selection is a single non-archive file, wrap it into an archive part on the client first.
+- If the selection is a folder, partition its files into groups and archive those groups into multiple parts on the client.
+
+This keeps the server contract simple:
+
+- the client is responsible for packaging
+- the server is responsible for validation, storage, indexing, and download serving
+
+### Folder Packaging Strategy
+
+Folder upload support should not require creating one giant temporary archive for the entire directory tree.
+
+Recommended approach:
+
+1. Walk the selected directory in stable sorted order.
+2. Accumulate files into a part until the estimated size reaches a configured target threshold.
+3. Start a new part when needed.
+4. Archive each part sequentially on the client.
+5. Upload each produced archive part as part of the same logical version import.
+
+Important rules:
+
+- do not split individual files in the first implementation
+- if one file exceeds the target part size, allow that part to exceed the target
+- keep part ordering deterministic
+- preserve a manifest of which source files were packaged into which part if later debugging requires it
+
+This avoids the worst temporary disk usage patterns while still keeping the protocol archive-set oriented.
+
+### Why Not Server-Side Re-Archiving
+
+Server-side re-archiving is the wrong default for this project because it:
+
+- duplicates work the client can already do with full access to the source files
+- makes very large imports harder to handle
+- creates unnecessary temporary storage pressure on the server
+- complicates preserving pre-existing multipart archive sets
+
+So the target state should be:
+
+- client packages
+- server stores uploaded archive parts directly
+- install manifests return those same parts in order
+
+The current single-payload server-side archive flow is an implementation bridge, not the long-term architecture.
 
 Playnite-side implementation note:
 
@@ -503,14 +575,14 @@ Gumo should own:
 
 - logical game records
 - version records
-- archive creation
-- multipart archive management
+- archive-set validation and storage
 - artifact checksums and download metadata
 - save snapshot records and archive metadata
 - catalog metadata and artwork
 
 Playnite should own:
 
+- client-side packaging of import sources into archive sets
 - local installation path choice
 - local extraction
 - local installed/uninstalled state
@@ -558,7 +630,7 @@ Do not hide versioning behind a single "best guess" behavior in the backend.
 Expected failure points:
 
 - upload interrupted
-- archive creation fails
+- client-side packaging fails
 - duplicate version conflict
 - download interrupted
 - checksum mismatch
@@ -570,7 +642,7 @@ The architecture should treat upload state and archive processing state as expli
 
 ## Upload Protocol Recommendation
 
-Recommended approach: **two-step upload with a created upload resource and explicit finalize step**
+Recommended approach: **created upload resource(s) with explicit finalize step**
 
 Use one shared upload infrastructure with distinct upload kinds:
 
@@ -579,59 +651,64 @@ Use one shared upload infrastructure with distinct upload kinds:
 
 Shared flow:
 
-1. create an upload session
-2. stream the upload content
-3. finalize the upload
-4. enqueue background processing
+1. create a logical import session
+2. create one or more upload-part resources
+3. stream archive-part content
+4. finalize the import
+5. enqueue background processing
 
 Game payload flow:
 
-1. `POST /api/integrations/playnite/uploads/game-payloads`
-   - create an upload session
-   - declare target library, platform, game/version intent, and file metadata
-2. `PUT /api/integrations/playnite/uploads/:id/content`
-   - stream the payload bytes
-3. `POST /api/integrations/playnite/uploads/:id/finalize`
-   - verify the upload
-   - create archive artifacts
-   - attach the resulting payload to the selected or created game/version
+1. `POST /api/integrations/playnite/import-sessions/game-payloads`
+   - create a logical import session
+   - declare target library, platform, game/version intent, and archive-set metadata
+2. `POST /api/integrations/playnite/import-sessions/:id/parts`
+   - register an ordered archive part
+3. `PUT /api/integrations/playnite/upload-parts/:id/content`
+   - stream that archive part
+4. `POST /api/integrations/playnite/import-sessions/:id/finalize`
+   - verify the uploaded part set
+   - attach the resulting artifact set to the selected or created game/version
 
 Save snapshot flow:
 
-1. `POST /api/integrations/playnite/uploads/save-snapshots`
-   - create an upload session
+1. `POST /api/integrations/playnite/import-sessions/save-snapshots`
+   - create a logical snapshot-import session
    - declare target game version and save metadata
-2. `PUT /api/integrations/playnite/uploads/:id/content`
-   - stream the payload bytes
-3. `POST /api/integrations/playnite/uploads/:id/finalize`
-   - verify the upload
-   - create save snapshot artifacts
-   - attach the resulting snapshot to the selected game version
+2. `POST /api/integrations/playnite/import-sessions/:id/parts`
+   - register an ordered archive part
+3. `PUT /api/integrations/playnite/upload-parts/:id/content`
+   - stream that archive part
+4. `POST /api/integrations/playnite/import-sessions/:id/finalize`
+   - verify the uploaded part set
+   - attach the resulting save snapshot artifact set to the selected game version
 
 Why this is the right default:
 
 - simpler than full resumable chunk protocols
 - safer than a single giant multipart request
 - gives explicit server-side state for validation and recovery
-- works well with background archive processing
+- works well with background validation and indexing
 - leaves room to add resumable/chunked uploads later without replacing the whole model
 
 Do not start with:
 
-- one giant multipart form request for the full payload
+- one giant multipart form request for the full payload set
+- forced server-side repacking of uploaded content into a second archive
 - a custom chunking protocol in v1 unless file sizes force it immediately
 
 Recommended v1 upload behavior:
 
-- one upload resource per incoming payload
-- streamed request body for content transfer
+- one logical import session per incoming version or save snapshot
+- one upload-part resource per archive part
+- streamed request body for part transfer
 - checksum provided by the client when possible
 - explicit server-side size validation
-- explicit finalize call to transition from "uploaded" to "processing"
+- explicit finalize call to transition from uploaded archive set to processing
 
-If large unreliable uploads become a problem later, extend this model into resumable chunked uploads rather than replacing it.
+If large unreliable uploads become a problem later, extend this model into resumable chunked part uploads rather than replacing it.
 
-Finalize should enqueue a background job rather than performing archive work inline.
+Finalize should enqueue a background job rather than performing validation/indexing work inline.
 
 The finalize response should include:
 
@@ -641,9 +718,22 @@ The finalize response should include:
 
 The Playnite plugin should poll for job completion.
 
+### Upload Resource Model
+
+The long-term resource model should distinguish:
+
+- `import_session`
+  - one logical game-version or save-snapshot import
+- `upload_part`
+  - one uploaded archive part within that session
+- `job`
+  - asynchronous backend processing after finalize
+
+That is a better fit than treating the whole import as one opaque single-file upload, because large imports may contain multiple archive parts by design.
+
 ## Upload And Job State Model
 
-Playnite may be terminated during upload, finalize, polling, or install preparation.
+Playnite may be terminated during part upload, finalize, polling, or install preparation.
 
 The backend must therefore treat upload and import processing as durable state machines rather than assuming a continuously connected client.
 
@@ -665,11 +755,11 @@ Recommended upload states:
 State meanings:
 
 - `created`
-  - upload session exists but no content has been received yet
+  - import session exists but no part content has been received yet
 - `uploading`
-  - content transfer is in progress
+  - part content transfer is in progress
 - `uploaded`
-  - content transfer completed and server-side size/checksum validation has passed enough to allow finalize
+  - all required part content transfer completed and server-side size/checksum validation has passed enough to allow finalize
 - `finalizing`
   - finalize request accepted and transition into job creation is underway
 - `queued`
@@ -677,7 +767,7 @@ State meanings:
 - `processing`
   - background import/archive job is running
 - `completed`
-  - import/archive job finished successfully and produced durable game/version/artifact records
+  - import job finished successfully and produced durable game/version/artifact records
 - `failed`
   - upload or processing encountered a terminal error
 - `abandoned`
@@ -755,9 +845,9 @@ For v1, I recommend:
 
 #### During `uploaded`
 
-If content upload finishes but Playnite exits before finalize:
+If all required part uploads finish but Playnite exits before finalize:
 
-- preserve the uploaded payload for a retention window
+- preserve the uploaded part set for a retention window
 - allow the same client or a later retry flow to finalize it if appropriate
 - otherwise expire and clean it up automatically
 
@@ -822,7 +912,7 @@ Cleanup rules:
 
 - remove stale `created` uploads after a short timeout
 - remove `abandoned` partial uploads after a short timeout
-- remove unfinalized `uploaded` payloads after a longer timeout
+- remove unfinalized `uploaded` part sets after a longer timeout
 - keep `failed` uploads long enough for diagnosis
 - keep `completed` job records longer than temporary upload blobs
 

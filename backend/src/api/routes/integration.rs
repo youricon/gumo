@@ -11,13 +11,15 @@ use crate::api::auth;
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
-    json, GameSummaryResource, GameVersionResource, InstallManifestResource, JobResource,
-    LibraryResource, ListResponse, SaveRestoreManifestResource, SaveSnapshotResource,
-    UploadResource,
+    json, GameSummaryResource, GameVersionResource, ImportSessionResource,
+    InstallManifestResource, JobResource, LibraryResource, ListResponse, SaveRestoreManifestResource,
+    SaveSnapshotResource, UploadPartResource, UploadResource,
 };
 use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{
-    self, CreateGamePayloadUploadRequest, CreateSaveSnapshotUploadRequest, ListQuery,
+    self, CreateGamePayloadImportSessionRequest, CreateGamePayloadUploadRequest,
+    CreateImportPartRequest, CreateSaveSnapshotImportSessionRequest, CreateSaveSnapshotUploadRequest,
+    ListQuery,
 };
 
 pub fn router(state: AppState) -> Router<AppState> {
@@ -35,6 +37,16 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/save-snapshots/{id}/download", get(download_save_snapshot))
         .route("/uploads", get(list_uploads))
         .route("/uploads/{id}", get(get_upload))
+        .route("/import-sessions", get(list_import_sessions))
+        .route("/import-sessions/{id}", get(get_import_session))
+        .route("/import-sessions/{id}/parts", get(list_import_parts).post(create_import_part))
+        .route("/import-sessions/{id}/finalize", post(finalize_import_session))
+        .route("/import-sessions/game-payloads", post(create_game_payload_import_session))
+        .route("/import-sessions/save-snapshots", post(create_save_snapshot_import_session))
+        .route(
+            "/upload-parts/{id}/content",
+            put(put_import_part_content).layer(DefaultBodyLimit::disable()),
+        )
         .route(
             "/uploads/{id}/content",
             put(put_upload_content).layer(DefaultBodyLimit::disable()),
@@ -129,12 +141,83 @@ async fn create_game_payload_upload(
     Ok((StatusCode::ACCEPTED, Json(upload)))
 }
 
+async fn create_game_payload_import_session(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateGamePayloadImportSessionRequest>,
+) -> Result<(StatusCode, Json<ImportSessionResource>), ApiError> {
+    let session = upload_jobs::create_game_payload_import_session(&state, payload).await?;
+    Ok((StatusCode::ACCEPTED, Json(session)))
+}
+
 async fn create_save_upload(
     State(state): State<AppState>,
     Json(payload): Json<CreateSaveSnapshotUploadRequest>,
 ) -> Result<(StatusCode, Json<UploadResource>), ApiError> {
     let upload = upload_jobs::create_save_snapshot_upload(&state, payload).await?;
     Ok((StatusCode::ACCEPTED, Json(upload)))
+}
+
+async fn create_save_snapshot_import_session(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateSaveSnapshotImportSessionRequest>,
+) -> Result<(StatusCode, Json<ImportSessionResource>), ApiError> {
+    let session = upload_jobs::create_save_snapshot_import_session(&state, payload).await?;
+    Ok((StatusCode::ACCEPTED, Json(session)))
+}
+
+async fn list_import_sessions(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<ListResponse<ImportSessionResource>>, ApiError> {
+    let items = upload_jobs::list_import_sessions(&state, query).await?;
+    Ok(json(ListResponse {
+        items,
+        next_cursor: None,
+    }))
+}
+
+async fn get_import_session(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<ImportSessionResource>, ApiError> {
+    Ok(Json(upload_jobs::get_import_session(&state, &id).await?))
+}
+
+async fn create_import_part(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    Json(payload): Json<CreateImportPartRequest>,
+) -> Result<(StatusCode, Json<UploadPartResource>), ApiError> {
+    let part = upload_jobs::create_import_part(&state, &id, payload).await?;
+    Ok((StatusCode::ACCEPTED, Json(part)))
+}
+
+async fn list_import_parts(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<UploadPartResource>>, ApiError> {
+    let items = upload_jobs::list_import_parts(&state, &id).await?;
+    Ok(json(ListResponse {
+        items,
+        next_cursor: None,
+    }))
+}
+
+async fn put_import_part_content(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<UploadPartResource>, ApiError> {
+    let part = upload_jobs::put_import_part_content(&state, &id, body).await?;
+    Ok(Json(part))
+}
+
+async fn finalize_import_session(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<(StatusCode, Json<JobResource>), ApiError> {
+    let job = upload_jobs::finalize_import_session(&state, &id).await?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
 async fn put_upload_content(

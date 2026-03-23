@@ -46,3 +46,7 @@ Install Gumo-managed game versions from Playnite using Gumo install manifests an
 ## Notes
 
 - Keep local install state owned by Playnite.
+- Follow-up work is tracked in:
+  - [08a_install_from_archive_set.md](/home/isaac/workspace/gumo/.agents/codex/tasks/002_playnite_plugin/08a_install_from_archive_set.md)
+  - [08b_install_cleanup_and_flattening.md](/home/isaac/workspace/gumo/.agents/codex/tasks/002_playnite_plugin/08b_install_cleanup_and_flattening.md)
+  - [08c_directory_upload_ux.md](/home/isaac/workspace/gumo/.agents/codex/tasks/002_playnite_plugin/08c_directory_upload_ux.md)

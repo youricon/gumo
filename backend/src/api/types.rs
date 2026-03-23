@@ -147,6 +147,41 @@ pub struct UploadResource {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct ImportSessionResource {
+    pub id: String,
+    pub kind: String,
+    pub library_id: String,
+    pub platform: String,
+    pub game_id: Option<String>,
+    pub game_version_id: Option<String>,
+    pub state: String,
+    pub part_count: u32,
+    pub uploaded_part_count: u32,
+    pub declared_size_bytes: u64,
+    pub received_size_bytes: u64,
+    pub job_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub expires_at: Option<String>,
+    pub error: Option<ResourceError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UploadPartResource {
+    pub id: String,
+    pub import_session_id: String,
+    pub part_index: u32,
+    pub state: String,
+    pub filename: String,
+    pub declared_size_bytes: u64,
+    pub received_size_bytes: u64,
+    pub checksum: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub error: Option<ResourceError>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct JobResource {
     pub id: String,
     pub kind: String,
