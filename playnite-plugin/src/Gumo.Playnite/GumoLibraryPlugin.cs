@@ -275,14 +275,14 @@ namespace Gumo.Playnite
             UploadGameArchiveFromMenu();
         }
 
-        internal void InstallGameFromController(Game game)
+        internal bool InstallGameFromController(Game game)
         {
             if (!settings.HasConnectionSettings())
             {
                 PlayniteApi.Dialogs.ShowErrorMessage(
                     "Configure the Gumo server URL and API token before installing a game.",
                     "Gumo");
-                return;
+                return false;
             }
 
             try
@@ -300,17 +300,20 @@ namespace Gumo.Playnite
                 if (result.Canceled)
                 {
                     Logger.Info($"Install canceled for {game.Name}.");
-                    return;
+                    return false;
                 }
 
                 if (result.Error != null)
                 {
                     throw result.Error;
                 }
+
+                return true;
             }
             catch (OperationCanceledException)
             {
                 Logger.Info($"Install canceled for {game.Name}.");
+                return false;
             }
             catch (GumoApiException exception)
             {
@@ -318,6 +321,7 @@ namespace Gumo.Playnite
                     $"Failed to install from Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
                 Logger.Error(message);
                 PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+                return false;
             }
             catch (Exception exception)
             {
@@ -325,6 +329,7 @@ namespace Gumo.Playnite
                 PlayniteApi.Dialogs.ShowErrorMessage(
                     $"Unexpected failure during Gumo install: {exception.Message}",
                     "Gumo");
+                return false;
             }
         }
 

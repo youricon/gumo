@@ -15,7 +15,10 @@ namespace Gumo.Playnite
 
         public override void Install(InstallActionArgs args)
         {
-            plugin.InstallGameFromController(Game);
+            if (plugin.InstallGameFromController(Game))
+            {
+                InvokeOnInstalled();
+            }
         }
     }
 }
