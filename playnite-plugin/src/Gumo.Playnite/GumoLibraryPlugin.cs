@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using System.Windows.Forms;
 using Microsoft.Win32;
 using Playnite.SDK;
 using Playnite.SDK.Events;
@@ -18,6 +19,7 @@ namespace Gumo.Playnite
     public sealed class GumoLibraryPlugin : LibraryPlugin
     {
         private static readonly ILogger Logger = LogManager.GetLogger();
+        private const long FolderUploadTargetPartSizeBytes = 8L * 1024 * 1024 * 1024;
         private readonly GumoLibrarySettings settings;
         private readonly CancellationTokenSource startupProbeCancellation = new CancellationTokenSource();
 
@@ -387,91 +389,138 @@ namespace Gumo.Playnite
             }
         }
 
-        private Game RunGameUploadImport(CancellationToken cancellationToken)
+        private Game RunGameUploadImport(GlobalProgressActionArgs progressArgs)
         {
-            var sourceFile = SelectUploadFile();
-            if (string.IsNullOrWhiteSpace(sourceFile))
+            var cancellationToken = progressArgs.CancelToken;
+            progressArgs.Text = "Selecting upload source";
+            progressArgs.CurrentProgressValue = 0;
+            var source = SelectUploadSource();
+            if (source == null || string.IsNullOrWhiteSpace(source.Path))
             {
                 return null;
             }
 
-            using (var client = CreateApiClient())
+            PreparedUploadArtifactSet prepared = null;
+            try
             {
-                var library = SelectLibrary(client, cancellationToken);
-                if (library == null)
+                using (var client = CreateApiClient())
                 {
-                    return null;
-                }
+                    var library = SelectLibrary(client, cancellationToken);
+                    if (library == null)
+                    {
+                        return null;
+                    }
 
-                var gameName = PromptRequiredString(
-                    "Game name",
-                    "Gumo",
-                    Path.GetFileNameWithoutExtension(sourceFile));
-                if (gameName == null)
-                {
-                    return null;
-                }
+                    var gameName = PromptRequiredString(
+                        "Game name",
+                        "Gumo",
+                        source.DefaultGameName);
+                    if (gameName == null)
+                    {
+                        return null;
+                    }
 
-                var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
-                if (versionName == null)
-                {
-                    return null;
-                }
+                    var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
+                    if (versionName == null)
+                    {
+                        return null;
+                    }
 
-                var gameTarget = ResolveUploadGameTarget(client, gameName, cancellationToken);
+                    var gameTarget = ResolveUploadGameTarget(client, gameName, cancellationToken);
+                    progressArgs.Text = source.IsDirectory
+                        ? $"Packaging folder '{source.DisplayName}'"
+                        : $"Preparing '{source.DisplayName}'";
+                    progressArgs.CurrentProgressValue = 10;
+                    prepared = PrepareUploadArtifacts(source, cancellationToken);
+                    var firstPartInfo = new FileInfo(prepared.Parts[0].UploadPath);
+                    var pending = new PendingGameUpload
+                    {
+                        LibraryId = library.Id,
+                        Platform = library.Platform,
+                        GameName = gameName,
+                        VersionName = versionName,
+                        SourcePath = source.Path,
+                        FileName = firstPartInfo.Name,
+                        PackagedPath = prepared.Parts[0].UploadPath,
+                        IsTemporaryPackagedArtifact = prepared.Parts[0].DeleteAfterUpload,
+                        IdempotencyKey = Guid.NewGuid().ToString("N"),
+                    };
 
-                var fileInfo = new FileInfo(sourceFile);
-                var pending = new PendingGameUpload
-                {
-                    LibraryId = library.Id,
-                    Platform = library.Platform,
-                    GameName = gameName,
-                    VersionName = versionName,
-                    SourcePath = sourceFile,
-                    FileName = fileInfo.Name,
-                    IdempotencyKey = Guid.NewGuid().ToString("N"),
-                };
-
-                var upload = client.CreateGamePayloadUploadAsync(
-                        new GumoCreateGamePayloadUploadRequest
-                        {
-                            LibraryId = library.Id,
-                            Platform = library.Platform,
-                            Game = gameTarget,
-                            Version = new GumoUploadVersionTarget
+                    var importSession = client.CreateGamePayloadImportSessionAsync(
+                            new GumoCreateGamePayloadImportSessionRequest
                             {
-                                VersionName = versionName,
+                                LibraryId = library.Id,
+                                Platform = library.Platform,
+                                Game = gameTarget,
+                                Version = new GumoUploadVersionTarget
+                                {
+                                    VersionName = versionName,
+                                    OriginalSourceName = source.DisplayName,
+                                },
+                                IdempotencyKey = pending.IdempotencyKey,
                             },
-                            File = new GumoUploadFileDescriptor
-                            {
-                                Filename = fileInfo.Name,
-                                SizeBytes = fileInfo.Length,
-                            },
-                            IdempotencyKey = pending.IdempotencyKey,
-                        },
-                        cancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
-
-                pending.UploadId = upload.Id;
-                SavePendingUpload(pending);
-
-                if (upload.State == "created" || upload.State == "abandoned")
-                {
-                    client.PutUploadContentAsync(upload.Id, sourceFile, cancellationToken)
+                            cancellationToken)
                         .GetAwaiter()
                         .GetResult();
+
+                    pending.ImportSessionId = importSession.Id;
+                    SavePendingUpload(pending);
+
+                    var orderedParts = prepared.Parts.OrderBy(part => part.PartIndex).ToList();
+                    for (var index = 0; index < orderedParts.Count; index++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var preparedPart = orderedParts[index];
+                        var fileInfo = new FileInfo(preparedPart.UploadPath);
+                        progressArgs.Text = $"Uploading part {index + 1}/{orderedParts.Count} for '{gameName}'";
+                        progressArgs.CurrentProgressValue = 20 + (index * 50) / Math.Max(orderedParts.Count, 1);
+                        var part = client.CreateImportPartAsync(
+                                importSession.Id,
+                                new GumoCreateImportPartRequest
+                                {
+                                    PartIndex = preparedPart.PartIndex,
+                                    File = new GumoUploadFileDescriptor
+                                    {
+                                        Filename = fileInfo.Name,
+                                        SizeBytes = fileInfo.Length,
+                                    },
+                                },
+                                cancellationToken)
+                            .GetAwaiter()
+                            .GetResult();
+
+                        pending.UploadPartId = part.Id;
+                        SavePendingUpload(pending);
+
+                        if (part.State == "created" || part.State == "abandoned")
+                        {
+                            client.PutImportPartContentAsync(part.Id, preparedPart.UploadPath, cancellationToken)
+                                .GetAwaiter()
+                                .GetResult();
+                        }
+                    }
+
+                    progressArgs.Text = $"Finalizing upload for '{gameName}'";
+                    progressArgs.CurrentProgressValue = 75;
+                    var job = client.FinalizeImportSessionAsync(importSession.Id, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                    pending.JobId = job.Id;
+                    SavePendingUpload(pending);
+
+                    var imported = WaitForCompletedUpload(client, pending, cancellationToken, progressArgs);
+                    RemovePendingUpload(pending);
+                    CleanupPreparedArtifact(pending);
+                    return imported;
                 }
-
-                var job = client.FinalizeUploadAsync(upload.Id, cancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
-                pending.JobId = job.Id;
-                SavePendingUpload(pending);
-
-                var imported = WaitForCompletedUpload(client, pending, cancellationToken);
-                RemovePendingUpload(pending.UploadId);
-                return imported;
+            }
+            catch
+            {
+                if (prepared != null)
+                {
+                    CleanupPreparedArtifacts(prepared);
+                }
+                throw;
             }
         }
 
@@ -491,9 +540,9 @@ namespace Gumo.Playnite
                 var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
                     progressArgs =>
                     {
-                        importedGame = RunGameUploadImport(progressArgs.CancelToken);
+                        importedGame = RunGameUploadImport(progressArgs);
                     },
-                    new GlobalProgressOptions("Uploading game archive to Gumo", true)
+                    new GlobalProgressOptions("Uploading game to Gumo", true)
                     {
                         IsIndeterminate = false,
                     });
@@ -680,30 +729,47 @@ namespace Gumo.Playnite
 
                 EnsureInstallDirectoryIsUsable(installDirectory);
 
-                var tempArchivePath = Path.Combine(
+                var tempDownloadDirectory = Path.Combine(
                     Path.GetTempPath(),
-                    $"gumo-install-{installManifest.Artifact.Id}.zip");
+                    $"gumo-install-{installManifest.Artifact.Id}-{Guid.NewGuid():N}");
                 try
                 {
-                    progressArgs.Text = $"Downloading {installManifest.Game.Name}";
-                    progressArgs.CurrentProgressValue = 10;
-                    var part = installManifest.Artifact.Parts.FirstOrDefault();
-                    if (part == null)
+                    Directory.CreateDirectory(tempDownloadDirectory);
+                    var parts = installManifest.Artifact.Parts
+                        .OrderBy(part => part.PartIndex)
+                        .ToList();
+                    if (parts.Count == 0)
                     {
                         throw new InvalidOperationException("Install manifest did not contain any downloadable parts.");
                     }
 
-                    client.DownloadToFileAsync(part.DownloadUrl, tempArchivePath, progressArgs.CancelToken)
-                        .GetAwaiter()
-                        .GetResult();
+                    for (var index = 0; index < parts.Count; index++)
+                    {
+                        progressArgs.CancelToken.ThrowIfCancellationRequested();
+                        var part = parts[index];
+                        var tempArchivePath = Path.Combine(
+                            tempDownloadDirectory,
+                            $"part-{part.PartIndex:D4}.zip");
+                        var progressBase = (index * 60) / Math.Max(parts.Count, 1);
 
-                    progressArgs.Text = $"Verifying {installManifest.Game.Name}";
-                    progressArgs.CurrentProgressValue = 45;
-                    VerifyFileChecksum(tempArchivePath, installManifest.Artifact.Checksum);
+                        progressArgs.Text = $"Downloading part {index + 1}/{parts.Count} for {installManifest.Game.Name}";
+                        progressArgs.CurrentProgressValue = 10 + progressBase;
+                        client.DownloadToFileAsync(part.DownloadUrl, tempArchivePath, progressArgs.CancelToken)
+                            .GetAwaiter()
+                            .GetResult();
 
-                    progressArgs.Text = $"Extracting {installManifest.Game.Name}";
-                    progressArgs.CurrentProgressValue = 70;
-                    ZipFile.ExtractToDirectory(tempArchivePath, installDirectory);
+                        progressArgs.Text = $"Verifying part {index + 1}/{parts.Count} for {installManifest.Game.Name}";
+                        progressArgs.CurrentProgressValue = 20 + progressBase;
+                        VerifyFileChecksum(tempArchivePath, part.Checksum);
+
+                        progressArgs.Text = $"Extracting part {index + 1}/{parts.Count} for {installManifest.Game.Name}";
+                        progressArgs.CurrentProgressValue = 30 + progressBase;
+                        ZipFile.ExtractToDirectory(tempArchivePath, installDirectory);
+                    }
+
+                    progressArgs.Text = $"Normalizing install layout for {installManifest.Game.Name}";
+                    progressArgs.CurrentProgressValue = 85;
+                    FlattenRedundantTopLevelDirectory(installDirectory);
 
                     progressArgs.Text = $"Selecting executable for {installManifest.Game.Name}";
                     progressArgs.CurrentProgressValue = 90;
@@ -723,9 +789,9 @@ namespace Gumo.Playnite
                 }
                 finally
                 {
-                    if (File.Exists(tempArchivePath))
+                    if (Directory.Exists(tempDownloadDirectory))
                     {
-                        File.Delete(tempArchivePath);
+                        Directory.Delete(tempDownloadDirectory, true);
                     }
                 }
             }
@@ -736,9 +802,14 @@ namespace Gumo.Playnite
             PendingGameUpload pending,
             CancellationToken cancellationToken)
         {
+            if (!string.IsNullOrWhiteSpace(pending.ImportSessionId))
+            {
+                return await ResumePendingImportSessionAsync(client, pending, cancellationToken);
+            }
+
             if (string.IsNullOrWhiteSpace(pending.UploadId))
             {
-                RemovePendingUpload(pending.UploadId);
+                RemovePendingUpload(pending);
                 return null;
             }
 
@@ -748,13 +819,15 @@ namespace Gumo.Playnite
                 var completedJob = !string.IsNullOrWhiteSpace(pending.JobId)
                     ? await client.GetJobAsync(pending.JobId, cancellationToken)
                     : null;
-                RemovePendingUpload(pending.UploadId);
+                RemovePendingUpload(pending);
+                CleanupPreparedArtifact(pending);
                 return completedJob != null ? ImportCompletedUpload(client, completedJob, pending) : null;
             }
 
             if (upload.State == "failed" || upload.State == "expired")
             {
-                RemovePendingUpload(pending.UploadId);
+                RemovePendingUpload(pending);
+                CleanupPreparedArtifact(pending);
                 return null;
             }
 
@@ -779,7 +852,68 @@ namespace Gumo.Playnite
             }
 
             var imported = WaitForCompletedUpload(client, pending, cancellationToken);
-            RemovePendingUpload(pending.UploadId);
+            RemovePendingUpload(pending);
+            CleanupPreparedArtifact(pending);
+            return imported;
+        }
+
+        private async Task<Game> ResumePendingImportSessionAsync(
+            GumoApiClient client,
+            PendingGameUpload pending,
+            CancellationToken cancellationToken)
+        {
+            var session = await client.GetImportSessionAsync(pending.ImportSessionId, cancellationToken);
+            if (session.State == "completed")
+            {
+                var completedJob = !string.IsNullOrWhiteSpace(pending.JobId)
+                    ? await client.GetJobAsync(pending.JobId, cancellationToken)
+                    : (!string.IsNullOrWhiteSpace(session.JobId)
+                        ? await client.GetJobAsync(session.JobId, cancellationToken)
+                        : null);
+                RemovePendingUpload(pending);
+                CleanupPreparedArtifact(pending);
+                return completedJob != null ? ImportCompletedUpload(client, completedJob, pending) : null;
+            }
+
+            if (session.State == "failed" || session.State == "expired")
+            {
+                RemovePendingUpload(pending);
+                CleanupPreparedArtifact(pending);
+                return null;
+            }
+
+            if (session.State == "created" || session.State == "abandoned" || session.State == "uploading")
+            {
+                Logger.Warn(
+                    $"Pending Gumo import session '{pending.GameName}' requires manual resume from the upload action; automatic re-upload is disabled.");
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(pending.JobId) &&
+                (session.State == "uploaded" || session.State == "queued" || session.State == "processing"))
+            {
+                var job = await client.FinalizeImportSessionAsync(session.Id, cancellationToken);
+                pending.JobId = job.Id;
+                SavePendingUpload(pending);
+            }
+
+            if (string.IsNullOrWhiteSpace(pending.JobId))
+            {
+                pending.JobId = session.JobId;
+                if (!string.IsNullOrWhiteSpace(pending.JobId))
+                {
+                    SavePendingUpload(pending);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(pending.JobId))
+            {
+                return null;
+            }
+
+            var imported = WaitForCompletedUpload(client, pending, cancellationToken);
+            RemovePendingUpload(pending);
+            CleanupPreparedArtifact(pending);
             return imported;
         }
 
@@ -787,6 +921,15 @@ namespace Gumo.Playnite
             GumoApiClient client,
             PendingGameUpload pending,
             CancellationToken cancellationToken)
+        {
+            return WaitForCompletedUpload(client, pending, cancellationToken, null);
+        }
+
+        private Game WaitForCompletedUpload(
+            GumoApiClient client,
+            PendingGameUpload pending,
+            CancellationToken cancellationToken,
+            GlobalProgressActionArgs progressArgs)
         {
             while (true)
             {
@@ -796,13 +939,24 @@ namespace Gumo.Playnite
                 switch (job.State)
                 {
                     case "completed":
+                        if (progressArgs != null)
+                        {
+                            progressArgs.Text = $"Import completed for '{pending.GameName}'";
+                            progressArgs.CurrentProgressValue = 100;
+                        }
                         return ImportCompletedUpload(client, job, pending);
                     case "failed":
-                        RemovePendingUpload(pending.UploadId);
+                        RemovePendingUpload(pending);
+                        CleanupPreparedArtifact(pending);
                         throw new InvalidOperationException(
                             $"Gumo upload job failed: {job.Error?.Message ?? "unknown error"}");
                     case "pending":
                     case "processing":
+                        if (progressArgs != null)
+                        {
+                            progressArgs.Text = $"Processing upload for '{pending.GameName}'";
+                            progressArgs.CurrentProgressValue = 80 + (job.Progress?.Percent ?? 0) / 5;
+                        }
                         Thread.Sleep(1000);
                         continue;
                     default:
@@ -931,16 +1085,57 @@ namespace Gumo.Playnite
             return value;
         }
 
-        private string SelectUploadFile()
+        private UploadSourceSelection SelectUploadSource()
         {
+            var modeSelection = PlayniteApi.Dialogs.SelectString(
+                "Select upload source type: enter 'file' for a single file/archive or 'folder' for a directory",
+                "Gumo",
+                "file");
+            if (!modeSelection.Result || string.IsNullOrWhiteSpace(modeSelection.SelectedString))
+            {
+                return null;
+            }
+
+            var mode = modeSelection.SelectedString.Trim().ToLowerInvariant();
+            if (mode == "folder" || mode == "directory")
+            {
+                using (var dialog = new FolderBrowserDialog())
+                {
+                    dialog.Description = "Select game folder to upload to Gumo";
+                    if (dialog.ShowDialog() != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                    {
+                        return null;
+                    }
+
+                    return new UploadSourceSelection
+                    {
+                        Path = dialog.SelectedPath,
+                        IsDirectory = true,
+                        DefaultGameName = new DirectoryInfo(dialog.SelectedPath).Name,
+                        DisplayName = new DirectoryInfo(dialog.SelectedPath).Name,
+                    };
+                }
+            }
+
             var dialog = new OpenFileDialog
             {
-                Title = "Select game archive payload to upload to Gumo",
+                Title = "Select game file or archive to upload to Gumo",
                 CheckFileExists = true,
                 Multiselect = false,
             };
 
-            return dialog.ShowDialog() == true ? dialog.FileName : null;
+            if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.FileName))
+            {
+                return null;
+            }
+
+            return new UploadSourceSelection
+            {
+                Path = dialog.FileName,
+                IsDirectory = false,
+                DefaultGameName = Path.GetFileNameWithoutExtension(dialog.FileName),
+                DisplayName = Path.GetFileName(dialog.FileName),
+            };
         }
 
         private GumoUploadGameTarget ResolveUploadGameTarget(
@@ -1031,11 +1226,13 @@ namespace Gumo.Playnite
 
         private string ResolveExecutablePath(string installDirectory)
         {
+            FlattenRedundantTopLevelDirectory(installDirectory);
             var executables = FindExecutables(installDirectory);
 
             if (executables.Count == 0)
             {
                 TryExpandSingleNestedZip(installDirectory);
+                FlattenRedundantTopLevelDirectory(installDirectory);
                 executables = FindExecutables(installDirectory);
             }
 
@@ -1151,6 +1348,21 @@ namespace Gumo.Playnite
             }
         }
 
+        private static void FlattenRedundantTopLevelDirectory(string installDirectory)
+        {
+            var normalizedRoot = NormalizeSingleTopLevelDirectory(installDirectory);
+            if (string.Equals(normalizedRoot, installDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            MoveDirectoryContents(normalizedRoot, installDirectory);
+            if (Directory.Exists(normalizedRoot) && !Directory.EnumerateFileSystemEntries(normalizedRoot).Any())
+            {
+                Directory.Delete(normalizedRoot, true);
+            }
+        }
+
         private static string SanitizePathComponent(string value)
         {
             var invalid = Path.GetInvalidFileNameChars();
@@ -1160,16 +1372,241 @@ namespace Gumo.Playnite
         private void SavePendingUpload(PendingGameUpload pending)
         {
             var uploads = settings.PendingGameUploads?.ToList() ?? new List<PendingGameUpload>();
-            uploads.RemoveAll(upload => upload.UploadId == pending.UploadId);
+            uploads.RemoveAll(upload => PendingUploadKey(upload) == PendingUploadKey(pending));
             uploads.Add(pending.Clone());
             settings.ReplacePendingGameUploads(uploads);
         }
 
-        private void RemovePendingUpload(string uploadId)
+        private void RemovePendingUpload(PendingGameUpload pending)
         {
             var uploads = settings.PendingGameUploads?.ToList() ?? new List<PendingGameUpload>();
-            uploads.RemoveAll(upload => upload.UploadId == uploadId);
+            uploads.RemoveAll(upload => PendingUploadKey(upload) == PendingUploadKey(pending));
             settings.ReplacePendingGameUploads(uploads);
+        }
+
+        private PreparedUploadArtifactSet PrepareUploadArtifacts(UploadSourceSelection source, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!source.IsDirectory && IsZipArchivePath(source.Path))
+            {
+                return new PreparedUploadArtifactSet
+                {
+                    Parts = new List<PreparedUploadArtifact>
+                    {
+                        new PreparedUploadArtifact
+                        {
+                            UploadPath = source.Path,
+                            DeleteAfterUpload = false,
+                            PartIndex = 0,
+                        },
+                    },
+                };
+            }
+
+            var tempDirectory = Path.Combine(Path.GetTempPath(), "gumo-upload");
+            Directory.CreateDirectory(tempDirectory);
+
+            if (!source.IsDirectory)
+            {
+                var archivePath = Path.Combine(tempDirectory, $"gumo-upload-{Guid.NewGuid():N}.zip");
+                using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+                {
+                    archive.CreateEntryFromFile(source.Path, Path.GetFileName(source.Path), CompressionLevel.Optimal);
+                }
+
+                return new PreparedUploadArtifactSet
+                {
+                    Parts = new List<PreparedUploadArtifact>
+                    {
+                        new PreparedUploadArtifact
+                        {
+                            UploadPath = archivePath,
+                            DeleteAfterUpload = true,
+                            PartIndex = 0,
+                        },
+                    },
+                };
+            }
+
+            var files = EnumerateDirectoryFiles(source.Path);
+            if (files.Count == 0)
+            {
+                throw new InvalidOperationException("The selected folder does not contain any files to upload.");
+            }
+            var groups = PartitionDirectoryFiles(files, FolderUploadTargetPartSizeBytes);
+            var parts = new List<PreparedUploadArtifact>();
+            for (var index = 0; index < groups.Count; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var archivePath = Path.Combine(tempDirectory, $"gumo-upload-{Guid.NewGuid():N}.part{index:D4}.zip");
+                using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+                {
+                    foreach (var file in groups[index])
+                    {
+                        archive.CreateEntryFromFile(file.FullPath, file.RelativePath, CompressionLevel.Optimal);
+                    }
+                }
+
+                parts.Add(new PreparedUploadArtifact
+                {
+                    UploadPath = archivePath,
+                    DeleteAfterUpload = true,
+                    PartIndex = index,
+                });
+            }
+
+            return new PreparedUploadArtifactSet
+            {
+                Parts = parts,
+            };
+        }
+
+        private static List<DirectoryUploadFile> EnumerateDirectoryFiles(string sourceDirectory)
+        {
+            return Directory
+                .EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories)
+                .Select(path => new DirectoryUploadFile
+                {
+                    FullPath = path,
+                    RelativePath = MakeRelativePath(sourceDirectory, path),
+                    SizeBytes = new FileInfo(path).Length,
+                })
+                .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static List<List<DirectoryUploadFile>> PartitionDirectoryFiles(
+            List<DirectoryUploadFile> files,
+            long targetPartSizeBytes)
+        {
+            var groups = new List<List<DirectoryUploadFile>>();
+            var currentGroup = new List<DirectoryUploadFile>();
+            long currentGroupSize = 0;
+
+            foreach (var file in files)
+            {
+                var shouldStartNewGroup =
+                    currentGroup.Count > 0 &&
+                    currentGroupSize + file.SizeBytes > targetPartSizeBytes;
+
+                if (shouldStartNewGroup)
+                {
+                    groups.Add(currentGroup);
+                    currentGroup = new List<DirectoryUploadFile>();
+                    currentGroupSize = 0;
+                }
+
+                currentGroup.Add(file);
+                currentGroupSize += file.SizeBytes;
+            }
+
+            if (currentGroup.Count > 0)
+            {
+                groups.Add(currentGroup);
+            }
+
+            return groups;
+        }
+
+        private static string MakeRelativePath(string baseDirectory, string fullPath)
+        {
+            var basePath = baseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                           Path.DirectorySeparatorChar;
+            var baseUri = new Uri(basePath);
+            var fullUri = new Uri(fullPath);
+            return Uri.UnescapeDataString(baseUri.MakeRelativeUri(fullUri).ToString())
+                .Replace('\\', '/');
+        }
+
+        private static bool IsZipArchivePath(string path)
+        {
+            return string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void CleanupPreparedArtifact(PendingGameUpload pending)
+        {
+            if (pending != null && pending.IsTemporaryPackagedArtifact)
+            {
+                TryDeleteFile(pending.PackagedPath);
+            }
+        }
+
+        private void CleanupPreparedArtifacts(PreparedUploadArtifactSet prepared)
+        {
+            if (prepared?.Parts == null)
+            {
+                return;
+            }
+
+            foreach (var part in prepared.Parts)
+            {
+                if (part.DeleteAfterUpload)
+                {
+                    TryDeleteFile(part.UploadPath);
+                }
+            }
+        }
+
+        private void TryDeleteFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (Exception exception)
+            {
+                Logger.Warn($"Failed to delete temporary Gumo artifact '{path}': {exception.Message}");
+            }
+        }
+
+        private string PendingUploadKey(PendingGameUpload pending)
+        {
+            return !string.IsNullOrWhiteSpace(pending?.ImportSessionId)
+                ? $"ims:{pending.ImportSessionId}"
+                : $"upl:{pending?.UploadId}";
+        }
+
+        private sealed class PreparedUploadArtifact
+        {
+            public string UploadPath { get; set; }
+
+            public bool DeleteAfterUpload { get; set; }
+
+            public int PartIndex { get; set; }
+        }
+
+        private sealed class PreparedUploadArtifactSet
+        {
+            public List<PreparedUploadArtifact> Parts { get; set; } = new List<PreparedUploadArtifact>();
+        }
+
+        private sealed class UploadSourceSelection
+        {
+            public string Path { get; set; }
+
+            public bool IsDirectory { get; set; }
+
+            public string DefaultGameName { get; set; }
+
+            public string DisplayName { get; set; }
+        }
+
+        private sealed class DirectoryUploadFile
+        {
+            public string FullPath { get; set; }
+
+            public string RelativePath { get; set; }
+
+            public long SizeBytes { get; set; }
         }
     }
 }

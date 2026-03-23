@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -39,12 +39,17 @@ Teach the Playnite plugin to normalize supported input types into one archive-se
 
 ## Tracking Checklist
 
-- [ ] Source-mode detection added
-- [ ] Single-file packaging added
+- [x] Source-mode detection added
+- [x] Single-file packaging added
 - [ ] Multipart archive passthrough added
 - [ ] Folder packaging added
-- [ ] Temporary artifact cleanup added
+- [x] Temporary artifact cleanup added
 
 ## Notes
 
 - Client packaging should become the norm; server-side re-archiving is only a bridge implementation.
+- Current implementation status:
+  - single `.zip` file inputs pass through unchanged
+  - single non-archive file inputs are wrapped into a temporary zip on the client
+  - upload flow now uses `import_session` plus one `upload_part`
+  - folder packaging and multipart archive-set passthrough are still pending

@@ -92,6 +92,8 @@ pub struct VersionUploadTarget {
     #[serde(default)]
     pub version_code: Option<String>,
     #[serde(default)]
+    pub original_source_name: Option<String>,
+    #[serde(default)]
     pub notes: Option<String>,
 }
 
@@ -588,32 +590,44 @@ pub async fn finalize_import_session(
             "all import-session parts must be uploaded before finalize",
         ));
     }
-    if parts.len() > 1 {
-        return Err(ApiError::bad_request(
-            "multi-part import-session execution is not implemented yet",
-        ));
-    }
 
-    let part = &parts[0];
-    let legacy_upload = materialize_legacy_upload_from_import_session(state, &session, part).await?;
-    let job = finalize_upload(state, &legacy_upload.public_id).await?;
-
-    let internal_job_id = sqlx::query_scalar::<_, i64>("SELECT id FROM jobs WHERE public_id = ?1")
-        .bind(&job.id)
-        .fetch_one(state.db())
-        .await
-        .map_err(internal_error)?;
+    let kind = if session.kind == "game_payload" {
+        "import_archive"
+    } else {
+        "save_snapshot_archive"
+    };
+    let job_public_id = prefixed_id("job");
+    let mut tx = state.db().begin().await.map_err(internal_error)?;
+    let job_row = sqlx::query(
+        r#"
+        INSERT INTO jobs (
+          public_id, kind, state, upload_id, game_id, game_version_id, progress_phase, progress_percent,
+          result_payload, error_code, error_message, retryable, created_at, updated_at
+        )
+        VALUES (?1, ?2, 'pending', NULL, ?3, ?4, 'queued', 0, NULL, NULL, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *
+        "#,
+    )
+    .bind(&job_public_id)
+    .bind(kind)
+    .bind(session.game_id)
+    .bind(session.game_version_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+    let job = job_from_row(job_row);
 
     sqlx::query(
         "UPDATE import_sessions SET state = 'queued', job_id = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
     )
     .bind(session.id)
-    .bind(internal_job_id)
-    .execute(state.db())
+    .bind(job.id)
+    .execute(&mut *tx)
     .await
     .map_err(internal_error)?;
+    tx.commit().await.map_err(internal_error)?;
 
-    Ok(job)
+    Ok(job_to_resource(job))
 }
 
 pub async fn get_import_session(
@@ -867,53 +881,106 @@ pub async fn run_queued_jobs_once(state: &AppState) -> Result<()> {
 
 async fn execute_job(state: &AppState, job_id: i64) -> Result<()> {
     let job = get_job_by_internal_id(state.db(), job_id).await?;
-    let upload_id = job.upload_id.ok_or_else(|| anyhow!("job {} missing upload_id", job.public_id))?;
-    let upload = get_upload_by_internal_id(state.db(), upload_id).await?;
-    let intent: UploadIntent = serde_json::from_str(&upload.intent_payload)?;
+    let result = if let Some(upload_id) = job.upload_id {
+        let upload = get_upload_by_internal_id(state.db(), upload_id).await?;
+        let intent: UploadIntent = serde_json::from_str(&upload.intent_payload)?;
 
-    set_job_progress(state.db(), job.id, "archiving", 25).await?;
-    sqlx::query("UPDATE uploads SET state = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
-        .bind(upload.id)
-        .execute(state.db())
-        .await?;
-
-    let result = match intent {
-        UploadIntent::GamePayload {
-            library_public_id,
-            platform,
-            game,
-            version,
-            file,
-        } => {
-            let created =
-                process_game_payload_job(state, &upload, &library_public_id, &platform, &game, &version, &file)
-                    .await?;
-            serde_json::json!({
-                "game_id": created.game_public_id,
-                "game_version_id": created.game_version_public_id,
-                "artifact_ids": [created.artifact_public_id],
-            })
-        }
-        UploadIntent::SaveSnapshot {
-            game_version_public_id,
-            name,
-            file,
-            notes,
-        } => {
-            let created = process_save_snapshot_job(
-                state,
-                &upload,
-                &game_version_public_id,
-                &name,
-                &file,
-                notes.as_deref(),
-            )
+        set_job_progress(state.db(), job.id, "archiving", 25).await?;
+        sqlx::query("UPDATE uploads SET state = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
+            .bind(upload.id)
+            .execute(state.db())
             .await?;
-            serde_json::json!({
-                "game_id": created.game_public_id,
-                "game_version_id": created.game_version_public_id,
-                "save_snapshot_id": created.snapshot_public_id,
-            })
+
+        match intent {
+            UploadIntent::GamePayload {
+                library_public_id,
+                platform,
+                game,
+                version,
+                file,
+            } => {
+                let created =
+                    process_game_payload_job(state, &upload, &library_public_id, &platform, &game, &version, &file)
+                        .await?;
+                serde_json::json!({
+                    "game_id": created.game_public_id,
+                    "game_version_id": created.game_version_public_id,
+                    "artifact_ids": [created.artifact_public_id],
+                })
+            }
+            UploadIntent::SaveSnapshot {
+                game_version_public_id,
+                name,
+                file,
+                notes,
+            } => {
+                let created = process_save_snapshot_job(
+                    state,
+                    &upload,
+                    &game_version_public_id,
+                    &name,
+                    &file,
+                    notes.as_deref(),
+                )
+                .await?;
+                serde_json::json!({
+                    "game_id": created.game_public_id,
+                    "game_version_id": created.game_version_public_id,
+                    "save_snapshot_id": created.snapshot_public_id,
+                })
+            }
+        }
+    } else {
+        let session = get_import_session_by_job_id(state.db(), job.id).await?;
+        let parts = get_upload_parts_for_session(state.db(), session.id)
+            .await
+            .map_err(|err| anyhow!(err.message))?;
+        let intent: UploadIntent = serde_json::from_str(&session.intent_payload)?;
+
+        set_job_progress(state.db(), job.id, "storing_parts", 25).await?;
+        sqlx::query("UPDATE import_sessions SET state = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
+            .bind(session.id)
+            .execute(state.db())
+            .await?;
+
+        match intent {
+            UploadIntent::GamePayload {
+                library_public_id,
+                platform,
+                game,
+                version,
+                ..
+            } => {
+                let created =
+                    process_game_payload_import_session_job(state, &session, &parts, &library_public_id, &platform, &game, &version)
+                        .await?;
+                serde_json::json!({
+                    "game_id": created.game_public_id,
+                    "game_version_id": created.game_version_public_id,
+                    "artifact_ids": [created.artifact_public_id],
+                })
+            }
+            UploadIntent::SaveSnapshot {
+                game_version_public_id,
+                name,
+                notes,
+                ..
+            } => {
+                let created = process_save_snapshot_import_session_job(
+                    state,
+                    &session,
+                    &parts,
+                    &game_version_public_id,
+                    &name,
+                    notes.as_deref(),
+                )
+                .await?;
+                serde_json::json!({
+                    "game_id": created.game_public_id,
+                    "game_version_id": created.game_version_public_id,
+                    "save_snapshot_id": created.snapshot_public_id,
+                })
+            }
         }
     };
 
@@ -931,16 +998,36 @@ async fn execute_job(state: &AppState, job_id: i64) -> Result<()> {
     .execute(state.db())
     .await?;
 
-    sqlx::query(
-        "UPDATE uploads SET state = 'completed', error_code = NULL, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
-    )
-    .bind(upload.id)
-    .execute(state.db())
-    .await?;
+    if let Some(upload_id) = job.upload_id {
+        let upload = get_upload_by_internal_id(state.db(), upload_id).await?;
+        sqlx::query(
+            "UPDATE uploads SET state = 'completed', error_code = NULL, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        )
+        .bind(upload.id)
+        .execute(state.db())
+        .await?;
 
-    let temp_path = PathBuf::from(&upload.temp_path);
-    if temp_path.exists() {
-        let _ = fs::remove_file(temp_path);
+        let temp_path = PathBuf::from(&upload.temp_path);
+        if temp_path.exists() {
+            let _ = fs::remove_file(temp_path);
+        }
+    } else if let Ok(session) = get_import_session_by_job_id(state.db(), job.id).await {
+        sqlx::query(
+            "UPDATE import_sessions SET state = 'completed', error_code = NULL, error_message = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        )
+        .bind(session.id)
+        .execute(state.db())
+        .await?;
+
+        for part in get_upload_parts_for_session(state.db(), session.id)
+            .await
+            .map_err(|err| anyhow!(err.message))?
+        {
+            let temp_path = PathBuf::from(&part.temp_path);
+            if temp_path.exists() {
+                let _ = fs::remove_file(temp_path);
+            }
+        }
     }
 
     Ok(())
@@ -1010,10 +1097,10 @@ async fn process_game_payload_job(
     let version_row = sqlx::query(
         r#"
         INSERT INTO game_versions (
-          public_id, game_id, library_id, version_name, version_code, release_date, notes,
+          public_id, game_id, library_id, version_name, version_code, original_source_name, release_date, notes,
           is_latest, storage_mode, created_at, updated_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, 1, 'managed_archive', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 1, 'managed_archive', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id, public_id
         "#,
     )
@@ -1022,6 +1109,7 @@ async fn process_game_payload_job(
     .bind(library.id)
     .bind(&version_target.version_name)
     .bind(&version_target.version_code)
+    .bind(&version_target.original_source_name)
     .bind(&version_target.notes)
     .fetch_one(&mut *tx)
     .await?;
@@ -1060,6 +1148,146 @@ async fn process_game_payload_job(
     tx.commit().await?;
 
     let _ = file;
+    Ok(GamePayloadResult {
+        game_public_id: game.public_id,
+        game_version_public_id: version_entity.public_id,
+        artifact_public_id,
+    })
+}
+
+async fn process_game_payload_import_session_job(
+    state: &AppState,
+    session: &ImportSessionRow,
+    parts: &[UploadPartRow],
+    library_public_id: &str,
+    platform: &str,
+    game_target: &GameUploadTarget,
+    version_target: &VersionUploadTarget,
+) -> Result<GamePayloadResult> {
+    let library = lookup_library(state.db(), library_public_id)
+        .await
+        .map_err(|err| anyhow!(err.message))?;
+    let platform_row = lookup_platform(state.db(), platform)
+        .await
+        .map_err(|err| anyhow!(err.message))?;
+    let mut tx = state.db().begin().await?;
+
+    let game = match (&game_target.id, &game_target.create) {
+        (Some(existing_id), _) => lookup_game_in_tx(&mut tx, existing_id).await?,
+        (None, Some(create)) => {
+            let public_id = prefixed_id("game");
+            let visibility = visibility_str_from_row(library.visibility);
+            let row = sqlx::query(
+                r#"
+                INSERT INTO games (
+                  public_id, library_id, name, sorting_name, description, release_date,
+                  cover_image, background_image, icon, source_slug, visibility, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?3, NULL, NULL, NULL, NULL, NULL, NULL, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, public_id
+                "#,
+            )
+            .bind(&public_id)
+            .bind(library.id)
+            .bind(&create.name)
+            .bind(visibility)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                "INSERT OR IGNORE INTO game_platforms (game_id, platform_id) VALUES (?1, ?2)",
+            )
+            .bind(row.get::<i64, _>("id"))
+            .bind(platform_row.id)
+            .execute(&mut *tx)
+            .await?;
+
+            BasicEntity {
+                id: row.get("id"),
+                public_id: row.get("public_id"),
+            }
+        }
+        _ => return Err(anyhow!("game upload target must specify either id or create")),
+    };
+
+    sqlx::query("UPDATE game_versions SET is_latest = 0, updated_at = CURRENT_TIMESTAMP WHERE game_id = ?1")
+        .bind(game.id)
+        .execute(&mut *tx)
+        .await?;
+
+    let version_public_id = prefixed_id("ver");
+    let version_row = sqlx::query(
+        r#"
+        INSERT INTO game_versions (
+          public_id, game_id, library_id, version_name, version_code, original_source_name, release_date, notes,
+          is_latest, storage_mode, created_at, updated_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, 1, 'managed_archive', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id, public_id
+        "#,
+    )
+    .bind(&version_public_id)
+    .bind(game.id)
+    .bind(library.id)
+    .bind(&version_target.version_name)
+    .bind(&version_target.version_code)
+    .bind(&version_target.original_source_name)
+    .bind(&version_target.notes)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let version_entity = BasicEntity {
+        id: version_row.get("id"),
+        public_id: version_row.get("public_id"),
+    };
+    let stored_parts =
+        store_import_session_parts(&library.root_path, "games", &version_entity.public_id, parts).await?;
+    let artifact_public_id = prefixed_id("art");
+    let aggregate_checksum = aggregate_part_checksum(&stored_parts)?;
+    let total_size = stored_parts.iter().map(|part| part.size_bytes).sum::<i64>();
+    let primary_relative_path = stored_parts
+        .first()
+        .map(|part| part.relative_path.clone())
+        .ok_or_else(|| anyhow!("import session contained no stored parts"))?;
+
+    let artifact_row = sqlx::query(
+        r#"
+        INSERT INTO version_artifacts (
+          public_id, game_version_id, artifact_kind, archive_type, relative_path, size_bytes,
+          checksum, part_count, is_managed, created_at
+        )
+        VALUES (?1, ?2, 'game_payload', 'zip', ?3, ?4, ?5, ?6, 1, CURRENT_TIMESTAMP)
+        RETURNING id
+        "#,
+    )
+    .bind(&artifact_public_id)
+    .bind(version_entity.id)
+    .bind(&primary_relative_path)
+    .bind(total_size)
+    .bind(&aggregate_checksum)
+    .bind(i64::try_from(stored_parts.len())?)
+    .fetch_one(&mut *tx)
+    .await?;
+    let artifact_id: i64 = artifact_row.get("id");
+
+    for (index, part) in stored_parts.iter().enumerate() {
+        sqlx::query(
+            r#"
+            INSERT INTO artifact_parts (version_artifact_id, part_index, relative_path, size_bytes, checksum)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(artifact_id)
+        .bind(i64::try_from(index)?)
+        .bind(&part.relative_path)
+        .bind(part.size_bytes)
+        .bind(&part.checksum)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+    let _ = session;
     Ok(GamePayloadResult {
         game_public_id: game.public_id,
         game_version_public_id: version_entity.public_id,
@@ -1117,6 +1345,70 @@ async fn process_save_snapshot_job(
     })
 }
 
+async fn process_save_snapshot_import_session_job(
+    state: &AppState,
+    session: &ImportSessionRow,
+    parts: &[UploadPartRow],
+    game_version_public_id: &str,
+    name: &str,
+    notes: Option<&str>,
+) -> Result<SaveSnapshotResult> {
+    let game_version = lookup_game_version_with_library(state.db(), game_version_public_id)
+        .await
+        .map_err(|err| anyhow!(err.message))?;
+    let library = get_library_by_internal_id(state.db(), game_version.library_id).await?;
+    let snapshot_public_id = prefixed_id("save");
+    let stored_parts =
+        store_import_session_parts(&library.root_path, "saves", game_version_public_id, parts).await?;
+    let aggregate_checksum = aggregate_part_checksum(&stored_parts)?;
+    let total_size = stored_parts.iter().map(|part| part.size_bytes).sum::<i64>();
+
+    let snapshot_row = sqlx::query(
+        r#"
+        INSERT INTO save_snapshots (
+          public_id, game_id, game_version_id, library_id, name, captured_at, archive_type,
+          size_bytes, checksum, notes, created_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP, 'zip', ?6, ?7, ?8, CURRENT_TIMESTAMP)
+        RETURNING id
+        "#,
+    )
+    .bind(&snapshot_public_id)
+    .bind(game_version.game_id)
+    .bind(game_version.id)
+    .bind(game_version.library_id)
+    .bind(name)
+    .bind(total_size)
+    .bind(&aggregate_checksum)
+    .bind(notes)
+    .fetch_one(state.db())
+    .await?;
+    let snapshot_id: i64 = snapshot_row.get("id");
+
+    for (index, part) in stored_parts.iter().enumerate() {
+        sqlx::query(
+            r#"
+            INSERT INTO save_snapshot_parts (save_snapshot_id, part_index, relative_path, size_bytes, checksum)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+        )
+        .bind(snapshot_id)
+        .bind(i64::try_from(index)?)
+        .bind(&part.relative_path)
+        .bind(part.size_bytes)
+        .bind(&part.checksum)
+        .execute(state.db())
+        .await?;
+    }
+
+    let _ = session;
+    Ok(SaveSnapshotResult {
+        game_public_id: game_version.game_public_id,
+        game_version_public_id: game_version.public_id,
+        snapshot_public_id,
+    })
+}
+
 async fn recover_incomplete_jobs(pool: &SqlitePool) -> Result<()> {
     sqlx::query(
         "UPDATE jobs SET state = 'pending', progress_phase = 'recovered', updated_at = CURRENT_TIMESTAMP WHERE state = 'processing'",
@@ -1125,6 +1417,11 @@ async fn recover_incomplete_jobs(pool: &SqlitePool) -> Result<()> {
     .await?;
     sqlx::query(
         "UPDATE uploads SET state = 'queued', updated_at = CURRENT_TIMESTAMP WHERE state = 'processing'",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "UPDATE import_sessions SET state = 'queued', updated_at = CURRENT_TIMESTAMP WHERE state = 'processing'",
     )
     .execute(pool)
     .await?;
@@ -1267,44 +1564,6 @@ async fn sync_import_session_upload_state(
     Ok(())
 }
 
-async fn materialize_legacy_upload_from_import_session(
-    state: &AppState,
-    session: &ImportSessionRow,
-    part: &UploadPartRow,
-) -> Result<UploadRow, ApiError> {
-    let legacy_public_id = prefixed_id("upl");
-    let row = sqlx::query(
-        r#"
-        INSERT INTO uploads (
-          public_id, kind, library_id, platform_id, game_id, game_version_id, state, filename,
-          declared_size_bytes, received_size_bytes, checksum, temp_path, job_id, idempotency_key,
-          expires_at, error_code, error_message, created_at, updated_at, intent_payload
-        )
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'uploaded', ?7, ?8, ?9, ?10, ?11, NULL, NULL, ?12, NULL, NULL,
-                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?13)
-        RETURNING *
-        "#,
-    )
-    .bind(&legacy_public_id)
-    .bind(&session.kind)
-    .bind(session.library_id)
-    .bind(session.platform_id)
-    .bind(session.game_id)
-    .bind(session.game_version_id)
-    .bind(&part.filename)
-    .bind(part.declared_size_bytes)
-    .bind(part.received_size_bytes)
-    .bind(&part.checksum)
-    .bind(&part.temp_path)
-    .bind(&session.expires_at)
-    .bind(&session.intent_payload)
-    .fetch_one(state.db())
-    .await
-    .map_err(internal_error)?;
-
-    Ok(upload_from_row(row))
-}
-
 fn map_job_state_to_import_session_state(job_state: &str) -> &'static str {
     match job_state {
         "pending" => "queued",
@@ -1444,6 +1703,14 @@ async fn get_upload_part_row(pool: &SqlitePool, public_id: &str) -> Result<Uploa
         .map_err(internal_error)?
         .ok_or_else(|| ApiError::not_found("upload_part", public_id))?;
     Ok(upload_part_from_row(row))
+}
+
+async fn get_import_session_by_job_id(pool: &SqlitePool, job_id: i64) -> Result<ImportSessionRow> {
+    let row = sqlx::query("SELECT * FROM import_sessions WHERE job_id = ?1")
+        .bind(job_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(import_session_from_row(row))
 }
 
 async fn get_upload_by_internal_id(pool: &SqlitePool, upload_id: i64) -> Result<UploadRow> {
@@ -1792,6 +2059,62 @@ async fn write_archive_for_upload(
     })
 }
 
+async fn store_import_session_parts(
+    library_root: &str,
+    prefix: &str,
+    record_public_id: &str,
+    parts: &[UploadPartRow],
+) -> Result<Vec<StoredPartResult>> {
+    let library_root = PathBuf::from(library_root);
+    let target_root = library_root.join(prefix).join(record_public_id);
+    fs::create_dir_all(&target_root)?;
+
+    let mut stored = Vec::with_capacity(parts.len());
+    for part in parts {
+        let extension = Path::new(&part.filename)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("zip");
+        let relative = PathBuf::from(prefix)
+            .join(record_public_id)
+            .join(format!("part-{0:04}.{1}", part.part_index, extension));
+        let final_path = library_root.join(&relative);
+        let temp_path = PathBuf::from(&part.temp_path);
+        if let Some(parent) = final_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&temp_path, &final_path).or_else(|_| {
+            fs::copy(&temp_path, &final_path)?;
+            fs::remove_file(&temp_path)
+        })?;
+
+        let metadata = fs::metadata(&final_path)?;
+        let checksum = compute_sha256(&final_path)?;
+        stored.push(StoredPartResult {
+            relative_path: relative.to_string_lossy().to_string(),
+            size_bytes: i64::try_from(metadata.len())?,
+            checksum,
+        });
+    }
+
+    Ok(stored)
+}
+
+fn aggregate_part_checksum(parts: &[StoredPartResult]) -> Result<String> {
+    if parts.len() == 1 {
+        return Ok(parts[0].checksum.clone());
+    }
+
+    let mut hasher = Sha256::new();
+    for (index, part) in parts.iter().enumerate() {
+        hasher.update(index.to_le_bytes());
+        hasher.update(part.relative_path.as_bytes());
+        hasher.update(part.size_bytes.to_le_bytes());
+        hasher.update(part.checksum.as_bytes());
+    }
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
 async fn mark_job_failed(pool: &SqlitePool, job: &JobRow, message: &str) -> Result<()> {
     sqlx::query(
         r#"
@@ -1811,6 +2134,16 @@ async fn mark_job_failed(pool: &SqlitePool, job: &JobRow, message: &str) -> Resu
             "UPDATE uploads SET state = 'failed', error_code = 'job_execution_failed', error_message = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
         )
         .bind(upload_id)
+        .bind(message)
+        .execute(pool)
+        .await?;
+    }
+
+    if let Ok(session) = get_import_session_by_job_id(pool, job.id).await {
+        sqlx::query(
+            "UPDATE import_sessions SET state = 'failed', error_code = 'job_execution_failed', error_message = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        )
+        .bind(session.id)
         .bind(message)
         .execute(pool)
         .await?;
@@ -1944,6 +2277,13 @@ struct ArchiveResult {
     checksum: String,
 }
 
+#[derive(Debug, Clone)]
+struct StoredPartResult {
+    relative_path: String,
+    size_bytes: i64,
+    checksum: String,
+}
+
 struct GamePayloadResult {
     game_public_id: String,
     game_version_public_id: String,
@@ -2035,11 +2375,12 @@ enabled = true
                         name: "Example".to_string(),
                     }),
                 },
-                version: VersionUploadTarget {
-                    version_name: "1.0.0".to_string(),
-                    version_code: None,
-                    notes: None,
-                },
+                    version: VersionUploadTarget {
+                        version_name: "1.0.0".to_string(),
+                        version_code: None,
+                        original_source_name: None,
+                        notes: None,
+                    },
                 file: UploadFileDescriptor {
                     filename: "setup.exe".to_string(),
                     size_bytes: 5,
@@ -2147,11 +2488,12 @@ enabled = true
                         name: "Cleanup".to_string(),
                     }),
                 },
-                version: VersionUploadTarget {
-                    version_name: "1.0.0".to_string(),
-                    version_code: None,
-                    notes: None,
-                },
+                    version: VersionUploadTarget {
+                        version_name: "1.0.0".to_string(),
+                        version_code: None,
+                        original_source_name: None,
+                        notes: None,
+                    },
                 file: UploadFileDescriptor {
                     filename: "cleanup.bin".to_string(),
                     size_bytes: 3,

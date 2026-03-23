@@ -47,5 +47,6 @@ Replace the single-payload upload assumption with a logical import session that 
 - Keep the contract idempotent and durable across Playnite termination.
 - Current bridge behavior:
   - import sessions and upload parts are now first-class API resources
-  - finalize currently materializes a legacy single-payload upload/job internally
-  - sessions with more than one uploaded part are rejected until the archive-set execution path lands
+  - finalize now creates and runs jobs directly from `import_session` plus `upload_part` data
+  - archive parts are stored directly into managed artifact-part records
+  - recovery still needs a dedicated pass for multipart session state

@@ -77,6 +77,7 @@ pub struct GameVersionResource {
     pub library_id: String,
     pub version_name: String,
     pub version_code: Option<String>,
+    pub original_source_name: Option<String>,
     pub release_date: Option<String>,
     pub is_latest: bool,
     pub notes: Option<String>,

@@ -43,12 +43,12 @@ This directory tracks the Playnite plugin work for Gumo.
 | 07 | Uploads Jobs And Recovery | Completed | 05, 06 |
 | 08 | Installation Flow | In progress | 05, 06 |
 | 07a | Import Session API | In progress | 07 |
-| 07b | Client Packaging Pipeline | Not started | 07a |
-| 07c | Folder Partitioning | Not started | 07b |
+| 07b | Client Packaging Pipeline | In progress | 07a |
+| 07c | Folder Partitioning | In progress | 07b |
 | 07d | Archive Set Recovery | Not started | 07a, 07b |
-| 08a | Install From Archive Set | Not started | 07a, 08 |
-| 08b | Install Cleanup And Flattening | Not started | 08a |
-| 08c | Directory Upload UX | Not started | 07b, 07c |
+| 08a | Install From Archive Set | In progress | 07a, 08 |
+| 08b | Install Cleanup And Flattening | In progress | 08a |
+| 08c | Directory Upload UX | In progress | 07b, 07c |
 | 09 | Save Backup And Restore | Not started | 05, 06 |
 | 10 | Packaging And Release | Not started | 04, 08a, 09 |
 | 11 | Windows CI | Not started | 10 |

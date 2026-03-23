@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -34,11 +34,16 @@ Finish the local install UX by cleaning up temporary artifacts and flattening re
 
 ## Tracking Checklist
 
-- [ ] Temporary archive cleanup added
-- [ ] Temporary extraction cleanup added
-- [ ] Redundant nesting flattening completed
-- [ ] Executable selection revalidated
+- [x] Temporary archive cleanup added
+- [x] Temporary extraction cleanup added
+- [x] Redundant nesting flattening completed
+- [x] Executable selection revalidated
 
 ## Notes
 
 - This task is about local install ergonomics, not upload protocol changes.
+- Current implementation status:
+  - downloaded install parts are cleaned up through a dedicated temporary download directory
+  - nested temporary extraction directories are removed after expansion
+  - redundant single-root install layout nesting is flattened before executable selection
+  - Windows runtime validation is still required

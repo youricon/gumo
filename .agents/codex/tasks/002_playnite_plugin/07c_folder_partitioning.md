@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -35,13 +35,16 @@ Support very large folder uploads by partitioning source files into archive grou
 
 ## Tracking Checklist
 
-- [ ] Target part size defined
-- [ ] Stable file walk added
-- [ ] Grouping logic added
-- [ ] Sequential archive generation added
-- [ ] Oversized-file rule implemented
+- [x] Target part size defined
+- [x] Stable file walk added
+- [x] Grouping logic added
+- [x] Sequential archive generation added
+- [x] Oversized-file rule implemented
 
 ## Notes
 
 - Do not split individual files in the first implementation.
 - Keep the grouping rules simple and debuggable.
+- Current limitation:
+  - folder uploads can now package and upload multiple archive parts
+  - end-to-end install and recovery behavior for multipart archive sets still needs further hardening

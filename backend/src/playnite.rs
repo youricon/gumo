@@ -379,6 +379,43 @@ pub async fn get_save_restore_manifest(
     .map_err(internal_error)?
     .ok_or_else(|| ApiError::not_found("save snapshot", snapshot_id))?;
 
+    let part_rows = sqlx::query(
+        r#"
+        SELECT part_index, relative_path, size_bytes, checksum
+        FROM save_snapshot_parts
+        WHERE save_snapshot_id = (
+          SELECT id FROM save_snapshots WHERE public_id = ?1
+        )
+        ORDER BY part_index ASC
+        "#,
+    )
+    .bind(snapshot_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(internal_error)?;
+
+    let parts = if part_rows.is_empty() {
+        vec![ArtifactPartResource {
+            part_index: 0,
+            download_url: format!("/api/integrations/playnite/save-snapshots/{snapshot_id}/download"),
+            size_bytes: row.get::<i64, _>("size_bytes") as u64,
+            checksum: row.get("checksum"),
+        }]
+    } else {
+        part_rows
+            .into_iter()
+            .map(|part_row| ArtifactPartResource {
+                part_index: part_row.get::<i64, _>("part_index") as i32,
+                download_url: format!(
+                    "/api/integrations/playnite/save-snapshots/{snapshot_id}/parts/{}/download",
+                    part_row.get::<i64, _>("part_index")
+                ),
+                size_bytes: part_row.get::<i64, _>("size_bytes") as u64,
+                checksum: part_row.get("checksum"),
+            })
+            .collect()
+    };
+
     Ok(SaveRestoreManifestResource {
         game_id: row.get("game_public_id"),
         game_version_id: row.get("version_public_id"),
@@ -390,12 +427,7 @@ pub async fn get_save_restore_manifest(
             size_bytes: row.get::<i64, _>("size_bytes") as u64,
             checksum: row.get("checksum"),
         },
-        parts: vec![ArtifactPartResource {
-            part_index: 0,
-            download_url: format!("/api/integrations/playnite/save-snapshots/{snapshot_id}/download"),
-            size_bytes: row.get::<i64, _>("size_bytes") as u64,
-            checksum: row.get("checksum"),
-        }],
+        parts,
     })
 }
 
@@ -414,6 +446,32 @@ pub async fn download_artifact(state: &AppState, artifact_id: &str) -> Result<Re
     .await
     .map_err(internal_error)?
     .ok_or_else(|| ApiError::not_found("artifact", artifact_id))?;
+
+    let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
+    file_response(path).await
+}
+
+pub async fn download_artifact_part(
+    state: &AppState,
+    artifact_id: &str,
+    part_index: i32,
+) -> Result<Response, ApiError> {
+    let row = sqlx::query(
+        r#"
+        SELECT ap.relative_path, l.root_path
+        FROM artifact_parts ap
+        INNER JOIN version_artifacts a ON a.id = ap.version_artifact_id
+        INNER JOIN game_versions gv ON gv.id = a.game_version_id
+        INNER JOIN libraries l ON l.id = gv.library_id
+        WHERE a.public_id = ?1 AND ap.part_index = ?2
+        "#,
+    )
+    .bind(artifact_id)
+    .bind(i64::from(part_index))
+    .fetch_optional(state.db())
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(|| ApiError::not_found("artifact part", artifact_id))?;
 
     let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
     file_response(path).await
@@ -442,6 +500,31 @@ pub async fn download_save_snapshot(
         .join(row.get::<String, _>("version_public_id"))
         .join("payload.zip");
     let path = PathBuf::from(row.get::<String, _>("root_path")).join(relative);
+    file_response(path).await
+}
+
+pub async fn download_save_snapshot_part(
+    state: &AppState,
+    snapshot_id: &str,
+    part_index: i32,
+) -> Result<Response, ApiError> {
+    let row = sqlx::query(
+        r#"
+        SELECT sp.relative_path, l.root_path
+        FROM save_snapshot_parts sp
+        INNER JOIN save_snapshots s ON s.id = sp.save_snapshot_id
+        INNER JOIN libraries l ON l.id = s.library_id
+        WHERE s.public_id = ?1 AND sp.part_index = ?2
+        "#,
+    )
+    .bind(snapshot_id)
+    .bind(i64::from(part_index))
+    .fetch_optional(state.db())
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(|| ApiError::not_found("save snapshot part", snapshot_id))?;
+
+    let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
     file_response(path).await
 }
 
@@ -484,7 +567,7 @@ async fn load_version_resource(pool: &SqlitePool, version_id: &str) -> Result<Ga
     let row = sqlx::query(
         r#"
         SELECT gv.public_id, g.public_id AS game_public_id, l.public_id AS library_public_id,
-               gv.version_name, gv.version_code, gv.release_date, gv.is_latest, gv.notes,
+               gv.version_name, gv.version_code, gv.original_source_name, gv.release_date, gv.is_latest, gv.notes,
                gv.created_at, gv.updated_at
         FROM game_versions gv
         INNER JOIN games g ON g.id = gv.game_id
@@ -504,6 +587,7 @@ async fn load_version_resource(pool: &SqlitePool, version_id: &str) -> Result<Ga
         library_id: row.get("library_public_id"),
         version_name: row.get("version_name"),
         version_code: row.get("version_code"),
+        original_source_name: row.get("original_source_name"),
         release_date: row.get("release_date"),
         is_latest: row.get::<i64, _>("is_latest") == 1,
         notes: row.get("notes"),
@@ -531,6 +615,43 @@ async fn load_primary_artifact(pool: &SqlitePool, version_id: &str) -> Result<cr
     .ok_or_else(|| ApiError::not_found("artifact for version", version_id))?;
 
     let artifact_id: String = row.get("public_id");
+    let part_rows = sqlx::query(
+        r#"
+        SELECT part_index, size_bytes, checksum
+        FROM artifact_parts
+        WHERE version_artifact_id = (
+          SELECT id FROM version_artifacts WHERE public_id = ?1
+        )
+        ORDER BY part_index ASC
+        "#,
+    )
+    .bind(&artifact_id)
+    .fetch_all(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let parts = if part_rows.is_empty() {
+        vec![ArtifactPartResource {
+            part_index: 0,
+            download_url: format!("/api/integrations/playnite/artifacts/{artifact_id}/download"),
+            size_bytes: row.get::<i64, _>("size_bytes") as u64,
+            checksum: row.get("checksum"),
+        }]
+    } else {
+        part_rows
+            .into_iter()
+            .map(|part_row| ArtifactPartResource {
+                part_index: part_row.get::<i64, _>("part_index") as i32,
+                download_url: format!(
+                    "/api/integrations/playnite/artifacts/{artifact_id}/parts/{}/download",
+                    part_row.get::<i64, _>("part_index")
+                ),
+                size_bytes: part_row.get::<i64, _>("size_bytes") as u64,
+                checksum: part_row.get("checksum"),
+            })
+            .collect()
+    };
+
     Ok(crate::api::types::ArtifactResource {
         id: artifact_id.clone(),
         game_version_id: row.get("version_public_id"),
@@ -538,12 +659,7 @@ async fn load_primary_artifact(pool: &SqlitePool, version_id: &str) -> Result<cr
         size_bytes: row.get::<i64, _>("size_bytes") as u64,
         checksum: row.get("checksum"),
         part_count: row.get::<i64, _>("part_count") as u32,
-        parts: vec![ArtifactPartResource {
-            part_index: 0,
-            download_url: format!("/api/integrations/playnite/artifacts/{artifact_id}/download"),
-            size_bytes: row.get::<i64, _>("size_bytes") as u64,
-            checksum: row.get("checksum"),
-        }],
+        parts,
         created_at: timestamp_to_rfc3339(&row.get::<String, _>("created_at")),
     })
 }

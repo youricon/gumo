@@ -165,6 +165,10 @@ namespace Gumo.Playnite
 
     public class PendingGameUpload
     {
+        public string ImportSessionId { get; set; }
+
+        public string UploadPartId { get; set; }
+
         public string UploadId { get; set; }
 
         public string JobId { get; set; }
@@ -180,6 +184,10 @@ namespace Gumo.Playnite
         public string SourcePath { get; set; }
 
         public string FileName { get; set; }
+
+        public string PackagedPath { get; set; }
+
+        public bool IsTemporaryPackagedArtifact { get; set; }
 
         public string IdempotencyKey { get; set; }
 

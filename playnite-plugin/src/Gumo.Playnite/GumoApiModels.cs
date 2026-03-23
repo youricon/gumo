@@ -123,6 +123,9 @@ namespace Gumo.Playnite
         [JsonProperty("version_code")]
         public string VersionCode { get; set; }
 
+        [JsonProperty("original_source_name")]
+        public string OriginalSourceName { get; set; }
+
         [JsonProperty("release_date")]
         public string ReleaseDate { get; set; }
 
@@ -509,6 +512,9 @@ namespace Gumo.Playnite
 
         [JsonProperty("version_code")]
         public string VersionCode { get; set; }
+
+        [JsonProperty("original_source_name")]
+        public string OriginalSourceName { get; set; }
 
         [JsonProperty("notes")]
         public string Notes { get; set; }

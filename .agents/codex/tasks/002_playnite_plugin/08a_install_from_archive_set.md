@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -34,11 +34,15 @@ Install Gumo game versions from the uploaded archive set directly instead of ass
 
 ## Tracking Checklist
 
-- [ ] Install manifest updated
-- [ ] Archive-part download added
-- [ ] Archive-set extraction added
-- [ ] Checksum verification updated
+- [x] Install manifest updated
+- [x] Archive-part download added
+- [x] Archive-set extraction added
+- [x] Checksum verification updated
 
 ## Notes
 
 - Keep the plugin-side install logic format-aware, but start with the formats Gumo actually supports.
+- Current implementation status:
+  - backend manifests now expose stored artifact parts
+  - the plugin downloads, verifies, and extracts all parts in order
+  - Windows runtime validation is still required

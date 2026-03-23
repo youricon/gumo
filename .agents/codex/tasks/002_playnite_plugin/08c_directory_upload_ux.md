@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -34,11 +34,15 @@ Expose folder uploads cleanly in the Playnite plugin once the archive-set pipeli
 
 ## Tracking Checklist
 
-- [ ] Folder picker added
-- [ ] Source-type-aware prompts added
-- [ ] Packaging progress added
-- [ ] Upload progress integrated
+- [x] Folder picker added
+- [x] Source-type-aware prompts added
+- [x] Packaging progress added
+- [x] Upload progress integrated
 
 ## Notes
 
 - This should land only after the packaging pipeline exists.
+- Current implementation status:
+  - the upload flow now distinguishes file vs folder selection up front
+  - packaging and network-upload phases update the Playnite global progress dialog separately
+  - Windows runtime validation is still required

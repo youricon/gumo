@@ -33,8 +33,13 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
         .route("/versions/{id}/save-uploads", post(create_save_upload))
         .route("/artifacts/{id}/download", get(download_artifact))
+        .route("/artifacts/{id}/parts/{part_index}/download", get(download_artifact_part))
         .route("/save-snapshots/{id}/restore", get(get_save_restore_manifest))
         .route("/save-snapshots/{id}/download", get(download_save_snapshot))
+        .route(
+            "/save-snapshots/{id}/parts/{part_index}/download",
+            get(download_save_snapshot_part),
+        )
         .route("/uploads", get(list_uploads))
         .route("/uploads/{id}", get(get_upload))
         .route("/import-sessions", get(list_import_sessions))
@@ -280,6 +285,13 @@ async fn download_artifact(
     playnite::download_artifact(&state, &id).await
 }
 
+async fn download_artifact_part(
+    Path((id, part_index)): Path<(String, i32)>,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    playnite::download_artifact_part(&state, &id, part_index).await
+}
+
 async fn get_save_restore_manifest(
     Path(id): Path<String>,
     State(state): State<AppState>,
@@ -292,4 +304,11 @@ async fn download_save_snapshot(
     State(state): State<AppState>,
 ) -> Result<Response, ApiError> {
     playnite::download_save_snapshot(&state, &id).await
+}
+
+async fn download_save_snapshot_part(
+    Path((id, part_index)): Path<(String, i32)>,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    playnite::download_save_snapshot_part(&state, &id, part_index).await
 }
