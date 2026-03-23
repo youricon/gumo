@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -35,11 +35,14 @@ Support version-specific save snapshot backup and restore flows through the plug
 
 ## Tracking Checklist
 
-- [ ] Save path strategy defined
-- [ ] Save upload flow added
-- [ ] Save listing flow added
-- [ ] Save restore flow added
+- [x] Save path strategy defined
+- [x] Save upload flow added
+- [x] Save listing flow added
+- [x] Save restore flow added
 
 ## Notes
 
 - Keep save backup and restore semantics conservative and explicit.
+- Current implementation uses an explicitly configured per-game save directory in plugin settings state.
+- Backup uses the existing import-session archive pipeline against the installed Gumo version.
+- Restore requires explicit confirmation before replacing local save contents.

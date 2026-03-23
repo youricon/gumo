@@ -49,7 +49,7 @@ This directory tracks the Playnite plugin work for Gumo.
 | 08a | Install From Archive Set | In progress | 07a, 08 |
 | 08b | Install Cleanup And Flattening | In progress | 08a |
 | 08c | Directory Upload UX | In progress | 07b, 07c |
-| 09 | Save Backup And Restore | Not started | 05, 06 |
+| 09 | Save Backup And Restore | In progress | 05, 06 |
 | 10 | Packaging And Release | Not started | 04, 08a, 09 |
 | 11 | Windows CI | Not started | 10 |
 

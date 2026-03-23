@@ -213,6 +213,17 @@ namespace Gumo.Playnite
                 cancellationToken);
         }
 
+        public Task<GumoImportSession> CreateSaveSnapshotImportSessionAsync(
+            GumoCreateSaveSnapshotImportSessionRequest request,
+            CancellationToken cancellationToken)
+        {
+            return SendJsonAsync<GumoImportSession>(
+                HttpMethod.Post,
+                "/api/integrations/playnite/import-sessions/save-snapshots",
+                request,
+                cancellationToken);
+        }
+
         public Task<GumoImportSession> GetImportSessionAsync(
             string importSessionId,
             CancellationToken cancellationToken)

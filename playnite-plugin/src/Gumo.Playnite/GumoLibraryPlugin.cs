@@ -115,6 +115,29 @@ namespace Gumo.Playnite
                 });
             }
 
+            if (args.Games.Count == 1 && IsGumoGame(args.Games[0]))
+            {
+                items.Add(new GameMenuItem
+                {
+                    Description = "Configure save directory",
+                    Action = _ => ConfigureSaveDirectory(args.Games[0]),
+                });
+
+                if (CanManageSaveSnapshots(args.Games[0]))
+                {
+                    items.Add(new GameMenuItem
+                    {
+                        Description = "Backup save snapshot to Gumo",
+                        Action = _ => BackupSaveSnapshotToGumo(args.Games[0]),
+                    });
+                    items.Add(new GameMenuItem
+                    {
+                        Description = "Restore save snapshot from Gumo",
+                        Action = _ => RestoreSaveSnapshotFromGumo(args.Games[0]),
+                    });
+                }
+            }
+
             if (args.Games.Any(CanUploadLocalGameToGumo))
             {
                 items.Add(new GameMenuItem
@@ -892,6 +915,233 @@ namespace Gumo.Playnite
                    Directory.Exists(game.InstallDirectory);
         }
 
+        private bool CanManageSaveSnapshots(Game game)
+        {
+            var installed = settings.GetInstalledGame(game.GameId);
+            return installed != null &&
+                   !string.IsNullOrWhiteSpace(installed.VersionId) &&
+                   !string.IsNullOrWhiteSpace(installed.SaveDirectory) &&
+                   Directory.Exists(installed.SaveDirectory);
+        }
+
+        private void ConfigureSaveDirectory(Game game)
+        {
+            var installed = settings.GetInstalledGame(game.GameId);
+            if (installed == null)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Install the Gumo game before configuring its save directory.",
+                    "Gumo");
+                return;
+            }
+
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            {
+                dialog.Description = $"Select the local save directory for {game.Name}";
+                if (!string.IsNullOrWhiteSpace(installed.SaveDirectory) && Directory.Exists(installed.SaveDirectory))
+                {
+                    dialog.SelectedPath = installed.SaveDirectory;
+                }
+
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                {
+                    return;
+                }
+
+                installed.SaveDirectory = dialog.SelectedPath;
+                settings.UpsertInstalledGame(installed);
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"Configured save directory for {game.Name}:{Environment.NewLine}{dialog.SelectedPath}",
+                    "Gumo");
+            }
+        }
+
+        private void BackupSaveSnapshotToGumo(Game game)
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before backing up saves.",
+                    "Gumo");
+                return;
+            }
+
+            var installed = settings.GetInstalledGame(game.GameId);
+            if (installed == null || string.IsNullOrWhiteSpace(installed.VersionId))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Install the Gumo game before backing up saves.",
+                    "Gumo");
+                return;
+            }
+
+            var saveDirectory = EnsureSaveDirectoryConfigured(game, installed, mustExist: true);
+            if (string.IsNullOrWhiteSpace(saveDirectory))
+            {
+                return;
+            }
+
+            var snapshotName = PromptRequiredString(
+                "Save snapshot name",
+                "Gumo",
+                $"Save {DateTime.Now:yyyy-MM-dd HH:mm}");
+            if (snapshotName == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        using (var client = CreateApiClient())
+                        {
+                            BackupSaveSnapshot(client, game, installed, saveDirectory, snapshotName, progressArgs);
+                        }
+                    },
+                    new GlobalProgressOptions("Backing up save snapshot to Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (result.Canceled)
+                {
+                    Logger.Info("Gumo save backup canceled.");
+                    return;
+                }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
+
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"Backed up '{snapshotName}' for {game.Name}.",
+                    "Gumo");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Gumo save backup canceled.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to back up save snapshot to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo save backup: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unexpected failure during Gumo save backup: {exception.Message}",
+                    "Gumo");
+            }
+        }
+
+        private void RestoreSaveSnapshotFromGumo(Game game)
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before restoring saves.",
+                    "Gumo");
+                return;
+            }
+
+            var installed = settings.GetInstalledGame(game.GameId);
+            if (installed == null || string.IsNullOrWhiteSpace(installed.VersionId))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Install the Gumo game before restoring saves.",
+                    "Gumo");
+                return;
+            }
+
+            var saveDirectory = EnsureSaveDirectoryConfigured(game, installed, mustExist: false);
+            if (string.IsNullOrWhiteSpace(saveDirectory))
+            {
+                return;
+            }
+
+            try
+            {
+                GumoSaveSnapshot selectedSnapshot;
+                using (var client = CreateApiClient())
+                {
+                    selectedSnapshot = SelectSaveSnapshotForRestore(client, installed.VersionId, game.Name);
+                }
+
+                if (selectedSnapshot == null)
+                {
+                    return;
+                }
+
+                var replaceExisting = false;
+                Directory.CreateDirectory(saveDirectory);
+                if (Directory.EnumerateFileSystemEntries(saveDirectory).Any())
+                {
+                    var confirmed = PlayniteApi.Dialogs.ShowMessage(
+                        $"Restore '{selectedSnapshot.Name}' into:{Environment.NewLine}{saveDirectory}{Environment.NewLine}{Environment.NewLine}This will replace the current local save contents.",
+                        "Gumo",
+                        System.Windows.MessageBoxButton.YesNo);
+                    if (confirmed != System.Windows.MessageBoxResult.Yes)
+                    {
+                        return;
+                    }
+
+                    replaceExisting = true;
+                }
+
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        using (var client = CreateApiClient())
+                        {
+                            RestoreSaveSnapshot(client, game, saveDirectory, selectedSnapshot, replaceExisting, progressArgs);
+                        }
+                    },
+                    new GlobalProgressOptions("Restoring save snapshot from Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (result.Canceled)
+                {
+                    Logger.Info("Gumo save restore canceled.");
+                    return;
+                }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
+
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"Restored '{selectedSnapshot.Name}' for {game.Name}.",
+                    "Gumo");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Gumo save restore canceled.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to restore save snapshot from Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo save restore: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unexpected failure during Gumo save restore: {exception.Message}",
+                    "Gumo");
+            }
+        }
+
         private string ResolveGameMediaReference(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -1417,6 +1667,268 @@ namespace Gumo.Playnite
             catch (Exception exception)
             {
                 Logger.Warn($"Failed to remove Playnite-managed media file '{fileId}': {exception.Message}");
+            }
+        }
+
+        private string EnsureSaveDirectoryConfigured(Game game, InstalledGameState installed, bool mustExist)
+        {
+            if (installed == null)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(installed.SaveDirectory) || (mustExist && !Directory.Exists(installed.SaveDirectory)))
+            {
+                ConfigureSaveDirectory(game);
+                installed = settings.GetInstalledGame(game.GameId);
+            }
+
+            if (installed == null || string.IsNullOrWhiteSpace(installed.SaveDirectory))
+            {
+                return null;
+            }
+
+            if (mustExist && !Directory.Exists(installed.SaveDirectory))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Configured save directory does not exist:{Environment.NewLine}{installed.SaveDirectory}",
+                    "Gumo");
+                return null;
+            }
+
+            return installed.SaveDirectory;
+        }
+
+        private void BackupSaveSnapshot(
+            GumoApiClient client,
+            Game game,
+            InstalledGameState installed,
+            string saveDirectory,
+            string snapshotName,
+            GlobalProgressActionArgs progressArgs)
+        {
+            progressArgs.Text = $"Packaging save snapshot for {game.Name}";
+            progressArgs.CurrentProgressValue = 5;
+
+            var source = new UploadSourceSelection
+            {
+                Path = saveDirectory,
+                IsDirectory = true,
+                DefaultGameName = snapshotName,
+                DisplayName = new DirectoryInfo(saveDirectory).Name,
+            };
+
+            var prepared = PrepareUploadArtifacts(source, progressArgs.CancelToken);
+            try
+            {
+                progressArgs.Text = $"Creating save snapshot session for {game.Name}";
+                progressArgs.CurrentProgressValue = 15;
+                var session = client.CreateSaveSnapshotImportSessionAsync(
+                        new GumoCreateSaveSnapshotImportSessionRequest
+                        {
+                            GameVersionId = installed.VersionId,
+                            Name = snapshotName,
+                            IdempotencyKey = Guid.NewGuid().ToString("N"),
+                        },
+                        progressArgs.CancelToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                var orderedParts = prepared.Parts.OrderBy(part => part.PartIndex).ToList();
+                for (var index = 0; index < orderedParts.Count; index++)
+                {
+                    progressArgs.CancelToken.ThrowIfCancellationRequested();
+                    var preparedPart = orderedParts[index];
+                    var fileInfo = new FileInfo(preparedPart.UploadPath);
+                    progressArgs.Text = $"Uploading save part {index + 1}/{orderedParts.Count} for {game.Name}";
+                    progressArgs.CurrentProgressValue = 20 + (index * 50) / Math.Max(orderedParts.Count, 1);
+
+                    var part = client.CreateImportPartAsync(
+                            session.Id,
+                            new GumoCreateImportPartRequest
+                            {
+                                PartIndex = preparedPart.PartIndex,
+                                File = new GumoUploadFileDescriptor
+                                {
+                                    Filename = fileInfo.Name,
+                                    SizeBytes = fileInfo.Length,
+                                },
+                            },
+                            progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult();
+
+                    if (part.State == "created" || part.State == "abandoned")
+                    {
+                        client.PutImportPartContentAsync(part.Id, preparedPart.UploadPath, progressArgs.CancelToken)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+                }
+
+                progressArgs.Text = $"Finalizing save snapshot for {game.Name}";
+                progressArgs.CurrentProgressValue = 75;
+                var job = client.FinalizeImportSessionAsync(session.Id, progressArgs.CancelToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                WaitForGenericJobCompletion(client, job.Id, $"save snapshot for '{game.Name}'", progressArgs.CancelToken, progressArgs);
+                progressArgs.CurrentProgressValue = 100;
+            }
+            finally
+            {
+                CleanupPreparedArtifacts(prepared);
+            }
+        }
+
+        private GumoSaveSnapshot SelectSaveSnapshotForRestore(
+            GumoApiClient client,
+            string versionId,
+            string gameName)
+        {
+            var snapshots = client.GetSaveSnapshotsAsync(versionId, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult()
+                .OrderByDescending(snapshot => snapshot.CapturedAt)
+                .ToList();
+
+            if (snapshots.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"No save snapshots are available for {gameName}.",
+                    "Gumo");
+                return null;
+            }
+
+            if (snapshots.Count == 1)
+            {
+                return snapshots[0];
+            }
+
+            var defaultInput = snapshots[0].Id;
+            var prompt = string.Join(
+                Environment.NewLine,
+                snapshots.Select(snapshot => $"{snapshot.Id} ({snapshot.Name} / {snapshot.CapturedAt})"));
+            var selection = PlayniteApi.Dialogs.SelectString(
+                $"Enter the save snapshot ID to restore for {gameName}:{Environment.NewLine}{prompt}",
+                "Gumo",
+                defaultInput);
+
+            if (!selection.Result)
+            {
+                return null;
+            }
+
+            var selected = snapshots.FirstOrDefault(snapshot =>
+                string.Equals(snapshot.Id, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+            if (selected == null)
+            {
+                throw new InvalidOperationException($"Unknown save snapshot ID '{selection.SelectedString}'.");
+            }
+
+            return selected;
+        }
+
+        private void RestoreSaveSnapshot(
+            GumoApiClient client,
+            Game game,
+            string saveDirectory,
+            GumoSaveSnapshot snapshot,
+            bool replaceExisting,
+            GlobalProgressActionArgs progressArgs)
+        {
+            var restoreManifest = client.GetSaveRestoreManifestAsync(snapshot.Id, progressArgs.CancelToken)
+                .GetAwaiter()
+                .GetResult();
+
+            Directory.CreateDirectory(saveDirectory);
+            if (replaceExisting)
+            {
+                ClearDirectoryContents(saveDirectory);
+            }
+
+            var tempDownloadDirectory = Path.Combine(
+                Path.GetTempPath(),
+                $"gumo-save-restore-{snapshot.Id}-{Guid.NewGuid():N}");
+            try
+            {
+                Directory.CreateDirectory(tempDownloadDirectory);
+                var parts = restoreManifest.Parts.OrderBy(part => part.PartIndex).ToList();
+                for (var index = 0; index < parts.Count; index++)
+                {
+                    progressArgs.CancelToken.ThrowIfCancellationRequested();
+                    var part = parts[index];
+                    var tempArchivePath = Path.Combine(tempDownloadDirectory, $"part-{part.PartIndex:D4}.zip");
+                    var progressBase = (index * 70) / Math.Max(parts.Count, 1);
+
+                    progressArgs.Text = $"Downloading save part {index + 1}/{parts.Count} for {game.Name}";
+                    progressArgs.CurrentProgressValue = 10 + progressBase;
+                    client.DownloadToFileAsync(part.DownloadUrl, tempArchivePath, progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult();
+
+                    progressArgs.Text = $"Verifying save part {index + 1}/{parts.Count} for {game.Name}";
+                    progressArgs.CurrentProgressValue = 20 + progressBase;
+                    VerifyFileChecksum(tempArchivePath, part.Checksum);
+
+                    progressArgs.Text = $"Extracting save part {index + 1}/{parts.Count} for {game.Name}";
+                    progressArgs.CurrentProgressValue = 30 + progressBase;
+                    ZipFile.ExtractToDirectory(tempArchivePath, saveDirectory);
+                }
+
+                progressArgs.CurrentProgressValue = 100;
+            }
+            finally
+            {
+                if (Directory.Exists(tempDownloadDirectory))
+                {
+                    Directory.Delete(tempDownloadDirectory, true);
+                }
+            }
+        }
+
+        private void WaitForGenericJobCompletion(
+            GumoApiClient client,
+            string jobId,
+            string label,
+            CancellationToken cancellationToken,
+            GlobalProgressActionArgs progressArgs)
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var job = client.GetJobAsync(jobId, cancellationToken).GetAwaiter().GetResult();
+                switch (job.State)
+                {
+                    case "completed":
+                        progressArgs.Text = $"Completed {label}";
+                        return;
+                    case "failed":
+                        throw new InvalidOperationException(
+                            $"Gumo job failed while processing {label}: {job.Error?.Message ?? "unknown error"}");
+                    case "pending":
+                    case "processing":
+                        progressArgs.Text = $"Processing {label}";
+                        progressArgs.CurrentProgressValue = 80 + (job.Progress?.Percent ?? 0) / 5;
+                        Thread.Sleep(1000);
+                        break;
+                    default:
+                        Thread.Sleep(1000);
+                        break;
+                }
+            }
+        }
+
+        private void ClearDirectoryContents(string path)
+        {
+            foreach (var directory in Directory.GetDirectories(path))
+            {
+                Directory.Delete(directory, true);
+            }
+
+            foreach (var file in Directory.GetFiles(path))
+            {
+                File.Delete(file);
             }
         }
 

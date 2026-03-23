@@ -207,6 +207,8 @@ namespace Gumo.Playnite
 
         public string ExecutablePath { get; set; }
 
+        public string SaveDirectory { get; set; }
+
         public InstalledGameState Clone()
         {
             return (InstalledGameState)MemberwiseClone();

@@ -601,6 +601,21 @@ namespace Gumo.Playnite
         public string IdempotencyKey { get; set; }
     }
 
+    public sealed class GumoCreateSaveSnapshotImportSessionRequest
+    {
+        [JsonProperty("game_version_id")]
+        public string GameVersionId { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("notes")]
+        public string Notes { get; set; }
+
+        [JsonProperty("idempotency_key")]
+        public string IdempotencyKey { get; set; }
+    }
+
     public sealed class GumoCreateImportPartRequest
     {
         [JsonProperty("part_index")]
