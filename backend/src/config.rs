@@ -10,6 +10,8 @@ use crate::domain::{AdminMode, PlatformId, Visibility};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AppConfig {
     pub server: ServerConfig,
+    #[serde(default)]
+    pub frontend: FrontendConfig,
     pub storage: StorageConfig,
     pub auth: AuthConfig,
     #[serde(default)]
@@ -39,6 +41,15 @@ impl AppConfig {
         }
         if self.server.port == 0 {
             errors.push("server.port must be greater than 0".to_string());
+        }
+        if matches!(
+            self.frontend.dev_listen_address.as_deref(),
+            Some(value) if value.trim().is_empty()
+        ) {
+            errors.push("frontend.dev_listen_address must not be empty".to_string());
+        }
+        if self.frontend.dev_port == 0 {
+            errors.push("frontend.dev_port must be greater than 0".to_string());
         }
 
         validate_path(
@@ -140,6 +151,23 @@ pub struct ServerConfig {
     pub port: u16,
     #[serde(default)]
     pub trusted_proxies: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FrontendConfig {
+    #[serde(default)]
+    pub dev_listen_address: Option<String>,
+    #[serde(default = "default_frontend_dev_port")]
+    pub dev_port: u16,
+}
+
+impl Default for FrontendConfig {
+    fn default() -> Self {
+        Self {
+            dev_listen_address: None,
+            dev_port: default_frontend_dev_port(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -257,6 +285,10 @@ fn require_non_empty(name: &str, value: Option<&str>, errors: &mut Vec<String>) 
 
 fn default_split_part_size_bytes() -> u64 {
     2 * 1024 * 1024 * 1024
+}
+
+fn default_frontend_dev_port() -> u16 {
+    4173
 }
 
 fn default_deduplicate_by_checksum() -> bool {

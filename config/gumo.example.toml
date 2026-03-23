@@ -2,6 +2,9 @@
 listen_address = "127.0.0.1"
 port = 8080
 
+[frontend]
+dev_port = 4173
+
 [storage]
 database_path = "./.local/gumo/data/gumo.db"
 cache_dir = "./.local/gumo/cache"

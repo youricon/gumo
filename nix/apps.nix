@@ -17,15 +17,85 @@ let
 
   frontendApp = pkgs.writeShellApplication {
     name = "gumo-frontend-dev";
-    runtimeInputs = [ pkgs.nodejs_22 ];
+    runtimeInputs = [ pkgs.gawk pkgs.nodejs_22 ];
     text = ''
+      config_file="$PWD/.local/gumo/config.toml"
+
+      if [ ! -f "$config_file" ]; then
+        echo "Missing $config_file"
+        echo "Run: nix run .#dev-init"
+        exit 1
+      fi
+
       if [ ! -d "$PWD/web/node_modules" ]; then
         echo "Missing frontend dependencies in $PWD/web/node_modules"
         echo "Run: npm --prefix web install"
         exit 1
       fi
 
-      exec npm --prefix "$PWD/web" run dev -- --host 127.0.0.1 --port 4173
+      listen_address="$(
+        awk '
+          /^\[server\]/ { in_server = 1; next }
+          /^\[/ && $0 != "[server]" { in_server = 0 }
+          in_server && $1 ~ /^listen_address$/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            gsub(/"/, "", value)
+            print value
+            exit
+          }
+        ' "$config_file"
+      )"
+
+      server_port="$(
+        awk '
+          /^\[server\]/ { in_server = 1; next }
+          /^\[/ && $0 != "[server]" { in_server = 0 }
+          in_server && $1 ~ /^port$/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            gsub(/"/, "", value)
+            print value
+            exit
+          }
+        ' "$config_file"
+      )"
+
+      frontend_listen_address="$(
+        awk '
+          /^\[frontend\]/ { in_frontend = 1; next }
+          /^\[/ && $0 != "[frontend]" { in_frontend = 0 }
+          in_frontend && $1 ~ /^dev_listen_address$/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            gsub(/"/, "", value)
+            print value
+            exit
+          }
+        ' "$config_file"
+      )"
+
+      frontend_port="$(
+        awk '
+          /^\[frontend\]/ { in_frontend = 1; next }
+          /^\[/ && $0 != "[frontend]" { in_frontend = 0 }
+          in_frontend && $1 ~ /^dev_port$/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            gsub(/"/, "", value)
+            print value
+            exit
+          }
+        ' "$config_file"
+      )"
+
+      listen_address="''${listen_address:-127.0.0.1}"
+      server_port="''${server_port:-8080}"
+      frontend_listen_address="''${frontend_listen_address:-$listen_address}"
+      frontend_port="''${frontend_port:-4173}"
+
+      export GUMO_API_ORIGIN="http://$listen_address:$server_port"
+      exec npm --prefix "$PWD/web" run dev -- --host "$frontend_listen_address" --port "$frontend_port"
     '';
   };
 

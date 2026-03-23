@@ -2656,6 +2656,9 @@ Illustrative shape:
 listen_address = "127.0.0.1"
 port = 8080
 
+[frontend]
+dev_port = 4173
+
 [storage]
 database_path = "./.local/gumo/data/gumo.db"
 cache_dir = "./.local/gumo/cache"
@@ -2691,6 +2694,7 @@ For local development, `nix run .#dev-init` or `just dev-init` should create the
 App config should own:
 
 - server behavior
+- frontend dev behavior
 - storage behavior
 - library definitions
 - platform enablement
