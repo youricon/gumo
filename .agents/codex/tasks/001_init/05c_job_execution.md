@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -41,11 +41,11 @@ Run background archive jobs for imports and save snapshots to completion with du
 
 ## Tracking Checklist
 
-- [ ] Job dispatcher
-- [ ] Import archive execution
-- [ ] Save snapshot archive execution
-- [ ] Progress persistence
-- [ ] Structured failure handling
+- [x] Job dispatcher
+- [x] Import archive execution
+- [x] Save snapshot archive execution
+- [x] Progress persistence
+- [x] Structured failure handling
 
 ## Notes
 

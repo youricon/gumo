@@ -10,15 +10,19 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = "1.0.97"
 axum = "0.8.6"
+hex = "0.4.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.10.9"
 sqlx = { version = "0.8.5", default-features = false, features = ["macros", "migrate", "sqlite", "runtime-tokio-rustls"] }
-tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread", "time"] }
 toml = "0.8.20"
 tower = { version = "0.5.2", features = ["util"] }
 tower-http = { version = "0.6.2", features = ["fs", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+uuid = { version = "1.18.1", features = ["v4"] }
+zip = "2.4.2"
 
 [dev-dependencies]
 rust-embed = "8.5.0"

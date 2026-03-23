@@ -1,4 +1,5 @@
-use axum::extract::{Path, State};
+use axum::body::Bytes;
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
@@ -6,7 +7,10 @@ use serde::Deserialize;
 
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
-use crate::api::types::{json, AcknowledgedResponse, JobResource, ListResponse, ResourceError, UploadResource};
+use crate::api::types::{json, AcknowledgedResponse, JobResource, ListResponse, UploadResource};
+use crate::upload_jobs::{
+    self, CreateGamePayloadUploadRequest, CreateSaveSnapshotUploadRequest, ListQuery,
+};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -74,46 +78,73 @@ async fn list_save_snapshots(Path(_id): Path<String>) -> Json<ListResponse<serde
     })
 }
 
-async fn create_game_payload_upload() -> Result<(StatusCode, Json<UploadResource>), ApiError> {
-    Ok((StatusCode::ACCEPTED, Json(sample_upload("game_payload"))))
+async fn create_game_payload_upload(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateGamePayloadUploadRequest>,
+) -> Result<(StatusCode, Json<UploadResource>), ApiError> {
+    let upload = upload_jobs::create_game_payload_upload(&state, payload).await?;
+    Ok((StatusCode::ACCEPTED, Json(upload)))
 }
 
-async fn create_save_upload() -> Result<(StatusCode, Json<UploadResource>), ApiError> {
-    Ok((StatusCode::ACCEPTED, Json(sample_upload("save_snapshot"))))
+async fn create_save_upload(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateSaveSnapshotUploadRequest>,
+) -> Result<(StatusCode, Json<UploadResource>), ApiError> {
+    let upload = upload_jobs::create_save_snapshot_upload(&state, payload).await?;
+    Ok((StatusCode::ACCEPTED, Json(upload)))
 }
 
-async fn put_upload_content(Path(_id): Path<String>) -> Json<AcknowledgedResponse> {
-    json(AcknowledgedResponse {
-        status: "accepted",
-    })
+async fn put_upload_content(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+    body: Bytes,
+) -> Result<Json<UploadResource>, ApiError> {
+    let upload = upload_jobs::put_upload_content(&state, &id, body).await?;
+    Ok(Json(upload))
 }
 
-async fn finalize_upload(Path(_id): Path<String>) -> Result<(StatusCode, Json<JobResource>), ApiError> {
-    Ok((StatusCode::ACCEPTED, Json(sample_job())))
+async fn finalize_upload(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<(StatusCode, Json<JobResource>), ApiError> {
+    let job = upload_jobs::finalize_upload(&state, &id).await?;
+    Ok((StatusCode::ACCEPTED, Json(job)))
 }
 
-async fn list_uploads() -> Json<ListResponse<UploadResource>> {
-    json(ListResponse {
-        items: vec![],
+async fn list_uploads(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<ListResponse<UploadResource>>, ApiError> {
+    let items = upload_jobs::list_uploads(&state, query).await?;
+    Ok(json(ListResponse {
+        items,
         next_cursor: None,
-    })
+    }))
 }
 
-async fn get_upload(Path(id): Path<String>) -> Result<Json<UploadResource>, ApiError> {
-    Ok(Json(sample_upload_with_id(&id, "game_payload")))
+async fn get_upload(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<UploadResource>, ApiError> {
+    Ok(Json(upload_jobs::get_upload(&state, &id).await?))
 }
 
-async fn list_jobs() -> Json<ListResponse<JobResource>> {
-    json(ListResponse {
-        items: vec![],
+async fn list_jobs(
+    State(state): State<AppState>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<ListResponse<JobResource>>, ApiError> {
+    let items = upload_jobs::list_jobs(&state, query).await?;
+    Ok(json(ListResponse {
+        items,
         next_cursor: None,
-    })
+    }))
 }
 
-async fn get_job(Path(id): Path<String>) -> Result<Json<JobResource>, ApiError> {
-    let mut job = sample_job();
-    job.id = id;
-    Ok(Json(job))
+async fn get_job(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<JobResource>, ApiError> {
+    Ok(Json(upload_jobs::get_job(&state, &id).await?))
 }
 
 async fn download_artifact(Path(_id): Path<String>) -> Result<Json<AcknowledgedResponse>, ApiError> {
@@ -130,52 +161,4 @@ async fn download_save_snapshot(
     Path(_id): Path<String>,
 ) -> Result<Json<AcknowledgedResponse>, ApiError> {
     Err(ApiError::not_implemented("save snapshot download"))
-}
-
-fn sample_upload(kind: &str) -> UploadResource {
-    sample_upload_with_id("upl_scaffold", kind)
-}
-
-fn sample_upload_with_id(id: &str, kind: &str) -> UploadResource {
-    UploadResource {
-        id: id.to_string(),
-        kind: kind.to_string(),
-        library_id: "library_primary".to_string(),
-        platform: "pc".to_string(),
-        game_id: Some("game_scaffold".to_string()),
-        game_version_id: None,
-        state: "created".to_string(),
-        filename: "placeholder.bin".to_string(),
-        declared_size_bytes: 0,
-        received_size_bytes: 0,
-        checksum: None,
-        job_id: Some("job_scaffold".to_string()),
-        created_at: "2026-03-22T20:00:00Z".to_string(),
-        updated_at: "2026-03-22T20:00:00Z".to_string(),
-        expires_at: None,
-        error: None,
-    }
-}
-
-fn sample_job() -> JobResource {
-    JobResource {
-        id: "job_scaffold".to_string(),
-        kind: "import_archive".to_string(),
-        state: "pending".to_string(),
-        upload_id: Some("upl_scaffold".to_string()),
-        game_id: Some("game_scaffold".to_string()),
-        game_version_id: None,
-        progress: Some(crate::api::types::JobProgress {
-            phase: "queued".to_string(),
-            percent: 0,
-        }),
-        result: None,
-        error: Some(ResourceError {
-            code: "not_implemented".to_string(),
-            message: "background processing not implemented yet".to_string(),
-            retryable: Some(false),
-        }),
-        created_at: "2026-03-22T20:00:00Z".to_string(),
-        updated_at: "2026-03-22T20:00:00Z".to_string(),
-    }
 }

@@ -6,7 +6,8 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqlitePool};
 
-use crate::config::StorageConfig;
+use crate::config::{AppConfig, StorageConfig};
+use crate::domain::Visibility;
 
 pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
@@ -21,7 +22,7 @@ pub async fn connect_and_migrate(storage: &StorageConfig) -> Result<SqlitePool> 
         .foreign_keys(true);
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(1)
+        .max_connections(5)
         .connect_with(options)
         .await
         .with_context(|| {
@@ -34,6 +35,56 @@ pub async fn connect_and_migrate(storage: &StorageConfig) -> Result<SqlitePool> 
     MIGRATOR.run(&pool).await.context("failed to run database migrations")?;
 
     Ok(pool)
+}
+
+pub async fn sync_config_reference_data(pool: &SqlitePool, config: &AppConfig) -> Result<()> {
+    for platform in &config.platforms {
+        sqlx::query(
+            r#"
+            INSERT INTO platforms (public_id, name, is_enabled, match_priority, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+              public_id = excluded.public_id,
+              is_enabled = excluded.is_enabled,
+              match_priority = excluded.match_priority,
+              updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(format!("platform_{}", platform.id.0))
+        .bind(&platform.id.0)
+        .bind(bool_to_int(platform.enabled))
+        .bind(platform.match_priority)
+        .execute(pool)
+        .await
+        .with_context(|| format!("failed to sync platform '{}'", platform.id.0))?;
+    }
+
+    for library in &config.libraries {
+        sqlx::query(
+            r#"
+            INSERT INTO libraries (public_id, name, root_path, platform_hint, visibility, is_enabled, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+              public_id = excluded.public_id,
+              root_path = excluded.root_path,
+              platform_hint = excluded.platform_hint,
+              visibility = excluded.visibility,
+              is_enabled = excluded.is_enabled,
+              updated_at = CURRENT_TIMESTAMP
+            "#,
+        )
+        .bind(format!("library_{}", slugify(&library.name)))
+        .bind(&library.name)
+        .bind(library.root_path.to_string_lossy().to_string())
+        .bind(&library.platform.0)
+        .bind(visibility_str(&library.visibility))
+        .bind(bool_to_int(library.enabled))
+        .execute(pool)
+        .await
+        .with_context(|| format!("failed to sync library '{}'", library.name))?;
+    }
+
+    Ok(())
 }
 
 pub async fn foreign_keys_enabled(pool: &SqlitePool) -> Result<bool> {
@@ -67,12 +118,36 @@ fn ensure_dir(path: &Path) -> Result<()> {
         .with_context(|| format!("failed to create directory {}", path.display()))
 }
 
+fn bool_to_int(value: bool) -> i64 {
+    if value { 1 } else { 0 }
+}
+
+fn visibility_str(value: &Visibility) -> &'static str {
+    match value {
+        Visibility::Public => "public",
+        Visibility::Private => "private",
+    }
+}
+
+fn slugify(input: &str) -> String {
+    input
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{connect_and_migrate, foreign_keys_enabled};
+    use super::{connect_and_migrate, foreign_keys_enabled, sync_config_reference_data};
     use crate::config::AppConfig;
 
     fn temp_test_root() -> PathBuf {
@@ -146,6 +221,9 @@ enabled = true
         let pool = connect_and_migrate(&config.storage)
             .await
             .expect("migrations should apply");
+        sync_config_reference_data(&pool, &config)
+            .await
+            .expect("config reference data should sync");
 
         assert!(
             foreign_keys_enabled(&pool)
@@ -168,6 +246,13 @@ enabled = true
                 .await
                 .expect("seed query should succeed");
         assert_eq!(seeded_platforms, 1, "pc platform should be seeded exactly once");
+
+        let synced_libraries: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM libraries WHERE name = 'primary';")
+                .fetch_one(&pool)
+                .await
+                .expect("library sync query should succeed");
+        assert_eq!(synced_libraries, 1, "config library should be synchronized");
 
         pool.close().await;
         let _ = fs::remove_dir_all(root);

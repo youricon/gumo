@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -42,11 +42,11 @@ Implement idempotent upload finalization and background job creation.
 
 ## Tracking Checklist
 
-- [ ] Finalize endpoint
-- [ ] Finalize validation
-- [ ] Job creation
-- [ ] Upload/job linking
-- [ ] Idempotency handling
+- [x] Finalize endpoint
+- [x] Finalize validation
+- [x] Job creation
+- [x] Upload/job linking
+- [x] Idempotency handling
 
 ## Notes
 

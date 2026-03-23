@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -46,12 +46,12 @@ Implement the durable upload state machine shared by game payload and save snaps
 
 ## Tracking Checklist
 
-- [ ] Game payload upload creation
-- [ ] Save snapshot upload creation
-- [ ] Temporary storage handling
-- [ ] Streaming and byte accounting
-- [ ] State transition validation
-- [ ] Upload state fetch endpoint
+- [x] Game payload upload creation
+- [x] Save snapshot upload creation
+- [x] Temporary storage handling
+- [x] Streaming and byte accounting
+- [x] State transition validation
+- [x] Upload state fetch endpoint
 
 ## Notes
 

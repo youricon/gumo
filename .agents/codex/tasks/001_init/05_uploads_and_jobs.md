@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -48,14 +48,14 @@ Implement the durable upload and background job system for game payloads and sav
 
 ## Tracking Checklist
 
-- [ ] Game payload upload flow implemented
-- [ ] Save snapshot upload flow implemented
-- [ ] Streamed content handling implemented
-- [ ] Finalize idempotency implemented
-- [ ] Background job execution implemented
-- [ ] Polling endpoints implemented
-- [ ] Recovery listing endpoints implemented
-- [ ] Cleanup policy implemented
+- [x] Game payload upload flow implemented
+- [x] Save snapshot upload flow implemented
+- [x] Streamed content handling implemented
+- [x] Finalize idempotency implemented
+- [x] Background job execution implemented
+- [x] Polling endpoints implemented
+- [x] Recovery listing endpoints implemented
+- [x] Cleanup policy implemented
 
 ## Blockers
 
@@ -64,3 +64,5 @@ Implement the durable upload and background job system for game payloads and sav
 ## Notes
 
 - This task is the highest-risk integration area and should be tested heavily.
+- Implemented in `backend/src/upload_jobs.rs` with shared upload intent payloads, temp-file storage, idempotent finalize, background polling, and cleanup/recovery support.
+- Added migration `0009_upload_intent_payload.sql` to persist upload intent metadata needed for durable processing.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -43,12 +43,12 @@ Support Playnite restart recovery and server-side cleanup of stale upload/job st
 
 ## Tracking Checklist
 
-- [ ] Upload polling endpoint
-- [ ] Job polling endpoint
-- [ ] Recovery list endpoints
-- [ ] Expiry handling
-- [ ] Temp file cleanup
-- [ ] Retention policy implementation
+- [x] Upload polling endpoint
+- [x] Job polling endpoint
+- [x] Recovery list endpoints
+- [x] Expiry handling
+- [x] Temp file cleanup
+- [x] Retention policy implementation
 
 ## Notes
 

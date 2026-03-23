@@ -7,6 +7,7 @@ use gumo::api::routes;
 use gumo::api::state::{frontend_router, AppState};
 use gumo::config::AppConfig;
 use gumo::db;
+use gumo::upload_jobs;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -19,7 +20,11 @@ async fn main() -> Result<()> {
     let pool = db::connect_and_migrate(&config.storage)
         .await
         .with_context(|| "database initialization failed")?;
+    db::sync_config_reference_data(&pool, &config)
+        .await
+        .with_context(|| "failed to sync config reference data")?;
     let state = AppState::new(config.clone(), pool);
+    let _background_worker = upload_jobs::spawn_background_worker(state.clone());
 
     let mut app = routes::router(state).layer(TraceLayer::new_for_http());
     if let Some(frontend) = frontend_router() {
