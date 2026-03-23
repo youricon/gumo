@@ -8,6 +8,7 @@
     <RootNamespace>Gumo.Playnite</RootNamespace>
     <AssemblyName>Gumo.Playnite</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Authors>Isaac</Authors>
     <Company>Gumo</Company>
     <Product>Gumo Playnite Plugin</Product>
