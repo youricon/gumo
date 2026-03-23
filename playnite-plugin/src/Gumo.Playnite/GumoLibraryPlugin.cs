@@ -1092,17 +1092,63 @@ namespace Gumo.Playnite
             }
 
             var nestedZip = zipFiles[0];
-            var targetDirectory = Path.Combine(
+            var extractionRoot = Path.Combine(
                 Path.GetDirectoryName(nestedZip) ?? installDirectory,
-                Path.GetFileNameWithoutExtension(nestedZip));
+                $"{Path.GetFileNameWithoutExtension(nestedZip)}__expanded");
 
-            if (Directory.Exists(targetDirectory) && Directory.EnumerateFileSystemEntries(targetDirectory).Any())
+            if (Directory.Exists(extractionRoot))
             {
-                return;
+                Directory.Delete(extractionRoot, true);
             }
 
-            Directory.CreateDirectory(targetDirectory);
-            ZipFile.ExtractToDirectory(nestedZip, targetDirectory);
+            Directory.CreateDirectory(extractionRoot);
+            ZipFile.ExtractToDirectory(nestedZip, extractionRoot);
+
+            var normalizedRoot = NormalizeSingleTopLevelDirectory(extractionRoot);
+            MoveDirectoryContents(normalizedRoot, installDirectory);
+
+            File.Delete(nestedZip);
+            Directory.Delete(extractionRoot, true);
+        }
+
+        private static string NormalizeSingleTopLevelDirectory(string directory)
+        {
+            var directories = Directory.GetDirectories(directory);
+            var files = Directory.GetFiles(directory);
+
+            if (files.Length == 0 && directories.Length == 1)
+            {
+                return directories[0];
+            }
+
+            return directory;
+        }
+
+        private static void MoveDirectoryContents(string sourceDirectory, string destinationDirectory)
+        {
+            foreach (var directory in Directory.GetDirectories(sourceDirectory))
+            {
+                var targetDirectory = Path.Combine(destinationDirectory, Path.GetFileName(directory));
+                if (Directory.Exists(targetDirectory))
+                {
+                    MoveDirectoryContents(directory, targetDirectory);
+                    Directory.Delete(directory, true);
+                }
+                else
+                {
+                    Directory.Move(directory, targetDirectory);
+                }
+            }
+
+            foreach (var file in Directory.GetFiles(sourceDirectory))
+            {
+                var targetFile = Path.Combine(destinationDirectory, Path.GetFileName(file));
+                if (File.Exists(targetFile))
+                {
+                    File.Delete(targetFile);
+                }
+                File.Move(file, targetFile);
+            }
         }
 
         private static string SanitizePathComponent(string value)
