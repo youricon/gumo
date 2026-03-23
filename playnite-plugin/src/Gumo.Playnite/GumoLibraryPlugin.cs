@@ -1834,28 +1834,22 @@ namespace Gumo.Playnite
                 return snapshots[0];
             }
 
-            var defaultInput = snapshots[0].Id;
-            var prompt = string.Join(
-                Environment.NewLine,
-                snapshots.Select(snapshot => $"{snapshot.Id} ({snapshot.Name} / {snapshot.CapturedAt})"));
-            var selection = PlayniteApi.Dialogs.SelectString(
-                $"Enter the save snapshot ID to restore for {gameName}:{Environment.NewLine}{prompt}",
-                "Gumo",
-                defaultInput);
+            var items = snapshots
+                .Select(snapshot => new OptionListPickerItem
+                {
+                    Id = snapshot.Id,
+                    Title = snapshot.Name,
+                    Description = $"{snapshot.Id} | {snapshot.CapturedAt}",
+                    Value = snapshot,
+                })
+                .ToList();
 
-            if (!selection.Result)
-            {
-                return null;
-            }
+            var selected = ShowOptionListPicker(
+                "Restore Gumo Save Snapshot",
+                $"Choose a save snapshot to restore for {gameName}.",
+                items);
 
-            var selected = snapshots.FirstOrDefault(snapshot =>
-                string.Equals(snapshot.Id, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
-            if (selected == null)
-            {
-                throw new InvalidOperationException($"Unknown save snapshot ID '{selection.SelectedString}'.");
-            }
-
-            return selected;
+            return selected != null ? (GumoSaveSnapshot)selected.Value : null;
         }
 
         private void RestoreSaveSnapshot(
@@ -2085,6 +2079,34 @@ namespace Gumo.Playnite
             }
 
             return value;
+        }
+
+        private OptionListPickerItem ShowOptionListPicker(
+            string title,
+            string prompt,
+            IReadOnlyList<OptionListPickerItem> items)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return null;
+            }
+
+            var pickerWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            {
+                ShowCloseButton = true,
+                ShowMaximizeButton = false,
+                ShowMinimizeButton = false,
+            });
+            pickerWindow.Title = title;
+            pickerWindow.Width = 560;
+            pickerWindow.Height = 420;
+            pickerWindow.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
+            pickerWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
+
+            var picker = new OptionListPickerWindow(pickerWindow, prompt, items, items[0]);
+            pickerWindow.Content = picker;
+            var result = pickerWindow.ShowDialog();
+            return result == true ? picker.SelectedItem : null;
         }
 
         private UploadSourceSelection SelectUploadSource()

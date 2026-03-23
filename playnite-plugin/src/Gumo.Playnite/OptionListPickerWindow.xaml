@@ -1,0 +1,51 @@
+<UserControl x:Class="Gumo.Playnite.OptionListPickerWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Margin="16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0"
+               Margin="0,0,0,12"
+               Text="{Binding PromptText}"
+               TextWrapping="Wrap" />
+
+    <ListBox Grid.Row="1"
+             x:Name="OptionsList"
+             ItemsSource="{Binding Items}"
+             SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+             BorderThickness="1"
+             MinWidth="420"
+             MinHeight="220"
+             MouseDoubleClick="OnListMouseDoubleClick">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Margin="4">
+            <TextBlock FontWeight="SemiBold"
+                       Text="{Binding Title}" />
+            <TextBlock Margin="0,2,0,0"
+                       Foreground="Gray"
+                       Text="{Binding Description}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <StackPanel Grid.Row="2"
+                Margin="0,12,0,0"
+                Orientation="Horizontal"
+                HorizontalAlignment="Right">
+      <Button Content="Select"
+              Width="80"
+              Margin="0,0,8,0"
+              Click="OnAcceptClick" />
+      <Button Content="Cancel"
+              Width="80"
+              Click="OnCancelClick" />
+    </StackPanel>
+  </Grid>
+</UserControl>
