@@ -320,13 +320,19 @@ Install development build into Playnite:
 .\scripts\install-dev.ps1 -Configuration Debug
 ```
 
-Run the placeholder packaging script:
+Run the packaging script:
 
 ```powershell
 .\scripts\package.ps1 -Configuration Release
 ```
 
-These scripts are intentionally simple right now. They exist to anchor the Windows workflow in-repo and will be expanded as packaging matures.
+The packaging script now:
+
+- builds the plugin in the requested configuration
+- stages the manifest and required assemblies from `bin\<Configuration>\`
+- creates a versioned `.pext` archive in `playnite-plugin\artifacts\`
+
+`install-dev.ps1` remains the fast local iteration path.
 
 ## Windows Packaging Workflow
 
@@ -335,10 +341,17 @@ Release packaging should happen on Windows.
 Recommended flow:
 
 1. Build in `Release`.
-2. Collect the plugin DLL and required manifest/package metadata.
-3. Produce the Playnite extension package format expected by Playnite.
+2. Run `.\scripts\package.ps1 -Configuration Release`.
+3. Collect the generated `.pext` artifact from `playnite-plugin\artifacts\`.
 4. Install that packaged artifact into a clean Playnite environment.
 5. Validate the core flows against a real Gumo instance.
+
+Example:
+
+```powershell
+cd C:\dev\gumo\playnite-plugin
+.\scripts\package.ps1 -Configuration Release
+```
 
 Release validation checklist:
 

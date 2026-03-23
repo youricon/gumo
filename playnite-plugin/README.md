@@ -49,6 +49,14 @@ Windows quickstart:
 5. Start Playnite.
 6. Confirm the extension loads and accepts the token in settings.
 
+Release packaging:
+
+```powershell
+.\scripts\package.ps1 -Configuration Release
+```
+
+This produces a `.pext` artifact under `playnite-plugin\artifacts\`.
+
 Reference:
 
 - [playnite-plugin-development.md](/home/isaac/workspace/gumo/docs/playnite-plugin-development.md)
@@ -73,7 +81,6 @@ Implemented:
 - durable upload/job tracking persisted in plugin settings
 - startup recovery that resumes pending Gumo uploads after Playnite restarts
 
-Not implemented yet:
+Release validation still pending:
 
-- install/save behavior
-- packaging validation in Playnite
+- clean install validation from the packaged `.pext` in Playnite

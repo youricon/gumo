@@ -11,3 +11,7 @@ Near-term intent:
 Current packaging entrypoint:
 
 - `../scripts/package.ps1`
+
+Current output:
+
+- `../artifacts/<ExtensionId>-<Version>.pext`
