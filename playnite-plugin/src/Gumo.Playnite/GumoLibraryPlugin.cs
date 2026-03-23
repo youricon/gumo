@@ -58,7 +58,7 @@ namespace Gumo.Playnite
                     foreach (var game in filteredGames)
                     {
                         var versions = client.GetVersionsAsync(game.Id, cancellationToken).GetAwaiter().GetResult();
-                        metadata.Add(GumoMapper.ToGameMetadata(game, versions));
+                        metadata.Add(GumoMapper.ToGameMetadata(NormalizeGumoGameMediaUrls(game), versions));
                     }
 
                     Logger.Info($"Gumo GetGames imported {metadata.Count} game metadata records.");
@@ -995,6 +995,40 @@ namespace Gumo.Playnite
                 .Url;
         }
 
+        private GumoGame NormalizeGumoGameMediaUrls(GumoGame game)
+        {
+            if (game == null)
+            {
+                return null;
+            }
+
+            game.CoverImage = NormalizeGumoMediaUrl(game.CoverImage);
+            game.BackgroundImage = NormalizeGumoMediaUrl(game.BackgroundImage);
+            game.Icon = NormalizeGumoMediaUrl(game.Icon);
+            return game;
+        }
+
+        private string NormalizeGumoMediaUrl(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var trimmed = value.Trim();
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+            {
+                return trimmed;
+            }
+
+            if (!trimmed.StartsWith("/", StringComparison.Ordinal))
+            {
+                trimmed = "/" + trimmed;
+            }
+
+            return settings.NormalizedServerUrl() + trimmed;
+        }
+
         private void InstallGame(GlobalProgressActionArgs progressArgs, Game game)
         {
             using (var client = CreateApiClient())
@@ -1265,17 +1299,21 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var game = client.GetGameAsync(gameId, CancellationToken.None).GetAwaiter().GetResult();
+            var game = NormalizeGumoGameMediaUrls(
+                client.GetGameAsync(gameId, CancellationToken.None).GetAwaiter().GetResult());
             var versions = client.GetVersionsAsync(gameId, CancellationToken.None).GetAwaiter().GetResult();
             var metadata = GumoMapper.ToGameMetadata(game, versions);
             var imported = PlayniteApi.Database.ImportGame(metadata, this);
-            if (imported != null)
+            var localGame = imported ?? PlayniteApi.Database.Games.FirstOrDefault(item =>
+                item.PluginId == Id &&
+                string.Equals(item.GameId, game.Id, StringComparison.OrdinalIgnoreCase));
+            if (localGame != null)
             {
-                SyncImportedGameMedia(client, imported, game, CancellationToken.None);
+                SyncImportedGameMedia(client, localGame, game, CancellationToken.None);
             }
 
             Logger.Info($"Imported uploaded Gumo game '{game.Name}' into Playnite.");
-            return imported ?? GumoMapper.ToDatabaseGame(game, versions, Id);
+            return localGame ?? GumoMapper.ToDatabaseGame(game, versions, Id);
         }
 
         private void SyncImportedGameMedia(
