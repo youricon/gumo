@@ -1,3 +1,4 @@
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Configuration = "Release",
     [string]$ProjectPath = ".\\src\\Gumo.Playnite\\Gumo.Playnite.csproj",
@@ -9,6 +10,49 @@ $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pluginRoot = Split-Path -Parent $scriptRoot
+$defaultProjectPath = ".\\src\\Gumo.Playnite\\Gumo.Playnite.csproj"
+
+function Resolve-MSBuildPath {
+    $command = Get-Command msbuild -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $vswherePath = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswherePath) {
+        $installationPath = & $vswherePath -latest -requires Microsoft.Component.MSBuild -property installationPath
+        if ($LASTEXITCODE -eq 0 -and $installationPath) {
+            $candidate = Join-Path $installationPath "MSBuild\Current\Bin\MSBuild.exe"
+            if (Test-Path $candidate) {
+                return $candidate
+            }
+        }
+    }
+
+    $fallbacks = @(
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\MSBuild.exe"),
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe")
+    )
+
+    foreach ($candidate in $fallbacks) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    throw "MSBuild.exe was not found. Install Visual Studio 2022 or Build Tools with the MSBuild component."
+}
+
+# Be tolerant of invocations like:
+#   .\scripts\package.ps1 --Configuration Release
+# where PowerShell may bind "Release" into the first positional string parameter.
+if ($ProjectPath -and $ProjectPath -notlike "*.csproj" -and $Configuration -eq "Release") {
+    $Configuration = $ProjectPath
+    $ProjectPath = $defaultProjectPath
+}
+
 $projectPath = Resolve-Path (Join-Path $pluginRoot $ProjectPath)
 $projectDir = Split-Path -Parent $projectPath
 $buildDir = Join-Path $projectDir "bin\\$Configuration"
@@ -17,7 +61,8 @@ $manifestPath = Join-Path $projectDir "extension.yaml"
 
 if (-not $SkipBuild) {
     Write-Host "Building Gumo Playnite plugin ($Configuration)..."
-    msbuild $projectPath /t:Build /p:Configuration=$Configuration
+    $msbuildPath = Resolve-MSBuildPath
+    & $msbuildPath $projectPath /t:Build /p:Configuration=$Configuration
 }
 
 if (-not (Test-Path $buildDir)) {

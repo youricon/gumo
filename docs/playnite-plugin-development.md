@@ -353,6 +353,8 @@ cd C:\dev\gumo\playnite-plugin
 .\scripts\package.ps1 -Configuration Release
 ```
 
+Use `-Configuration`, not `--Configuration`, when invoking the PowerShell script.
+
 Release validation checklist:
 
 - plugin loads in a clean Playnite install
