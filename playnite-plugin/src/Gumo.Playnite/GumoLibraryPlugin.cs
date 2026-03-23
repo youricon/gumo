@@ -169,7 +169,7 @@ namespace Gumo.Playnite
             try
             {
                 int visibleGameCount = 0;
-                PlayniteApi.Dialogs.ActivateGlobalProgress(
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
                     progressArgs =>
                     {
                         using (var client = CreateApiClient())
@@ -182,6 +182,17 @@ namespace Gumo.Playnite
                     {
                         IsIndeterminate = true,
                     });
+
+                if (result.Canceled)
+                {
+                    Logger.Info("Gumo connection test canceled.");
+                    return;
+                }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
 
                 PlayniteApi.Dialogs.ShowMessage(
                     $"Connection succeeded. Gumo returned {visibleGameCount} visible game(s).",
@@ -337,7 +348,7 @@ namespace Gumo.Playnite
             try
             {
                 Game importedGame = null;
-                PlayniteApi.Dialogs.ActivateGlobalProgress(
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
                     progressArgs =>
                     {
                         importedGame = RunGameUploadImport(progressArgs.CancelToken);
@@ -346,6 +357,17 @@ namespace Gumo.Playnite
                     {
                         IsIndeterminate = false,
                     });
+
+                if (result.Canceled)
+                {
+                    Logger.Info("Gumo upload import canceled.");
+                    return;
+                }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
 
                 if (importedGame != null)
                 {
