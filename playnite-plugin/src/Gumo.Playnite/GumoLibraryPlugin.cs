@@ -104,19 +104,27 @@ namespace Gumo.Playnite
                 return Enumerable.Empty<GameMenuItem>();
             }
 
-            if (!args.Games.Any(IsGumoGame))
-            {
-                return Enumerable.Empty<GameMenuItem>();
-            }
+            var items = new List<GameMenuItem>();
 
-            return new[]
+            if (args.Games.Any(IsGumoGame))
             {
-                new GameMenuItem
+                items.Add(new GameMenuItem
                 {
                     Description = "Push selected metadata to Gumo",
                     Action = _ => PushMetadataToGumo(args.Games),
-                }
-            };
+                });
+            }
+
+            if (args.Games.Any(CanUploadLocalGameToGumo))
+            {
+                items.Add(new GameMenuItem
+                {
+                    Description = "Upload selected local game(s) to Gumo",
+                    Action = _ => UploadSelectedLocalGamesToGumo(args.Games),
+                });
+            }
+
+            return items;
         }
 
         public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)
@@ -394,126 +402,152 @@ namespace Gumo.Playnite
             progressArgs.Text = "Preparing upload";
             progressArgs.CurrentProgressValue = 0;
 
-            PreparedUploadArtifactSet prepared = null;
+            using (var client = CreateApiClient())
+            {
+                var library = SelectLibrary(client, cancellationToken);
+                if (library == null)
+                {
+                    return null;
+                }
+
+                var gameName = PromptRequiredString(
+                    "Game name",
+                    "Gumo",
+                    source.DefaultGameName);
+                if (gameName == null)
+                {
+                    return null;
+                }
+
+                var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
+                if (versionName == null)
+                {
+                    return null;
+                }
+
+                var completedJob = UploadGameSourceToGumo(
+                    client,
+                    source,
+                    library,
+                    gameName,
+                    versionName,
+                    null,
+                    progressArgs);
+                var imported = ImportCompletedUpload(client, completedJob, new PendingGameUpload
+                {
+                    GameName = gameName,
+                });
+                return imported;
+            }
+        }
+
+        private GumoJob UploadGameSourceToGumo(
+            GumoApiClient client,
+            UploadSourceSelection source,
+            GumoLibrary library,
+            string gameName,
+            string versionName,
+            Game metadataSource,
+            GlobalProgressActionArgs progressArgs)
+        {
+            var cancellationToken = progressArgs.CancelToken;
+            var gameTarget = ResolveUploadGameTarget(client, gameName, cancellationToken);
+            progressArgs.Text = source.IsDirectory
+                ? $"Packaging folder '{source.DisplayName}'"
+                : $"Preparing '{source.DisplayName}'";
+            progressArgs.CurrentProgressValue = 10;
+            var prepared = PrepareUploadArtifacts(source, cancellationToken);
+            var firstPartInfo = new FileInfo(prepared.Parts[0].UploadPath);
+            var pending = new PendingGameUpload
+            {
+                LibraryId = library.Id,
+                Platform = library.Platform,
+                GameName = gameName,
+                VersionName = versionName,
+                SourcePath = source.Path,
+                FileName = firstPartInfo.Name,
+                PackagedPath = prepared.Parts[0].UploadPath,
+                IsTemporaryPackagedArtifact = prepared.Parts[0].DeleteAfterUpload,
+                IdempotencyKey = Guid.NewGuid().ToString("N"),
+            };
+
             try
             {
-                using (var client = CreateApiClient())
-                {
-                    var library = SelectLibrary(client, cancellationToken);
-                    if (library == null)
-                    {
-                        return null;
-                    }
-
-                    var gameName = PromptRequiredString(
-                        "Game name",
-                        "Gumo",
-                        source.DefaultGameName);
-                    if (gameName == null)
-                    {
-                        return null;
-                    }
-
-                    var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
-                    if (versionName == null)
-                    {
-                        return null;
-                    }
-
-                    var gameTarget = ResolveUploadGameTarget(client, gameName, cancellationToken);
-                    progressArgs.Text = source.IsDirectory
-                        ? $"Packaging folder '{source.DisplayName}'"
-                        : $"Preparing '{source.DisplayName}'";
-                    progressArgs.CurrentProgressValue = 10;
-                    prepared = PrepareUploadArtifacts(source, cancellationToken);
-                    var firstPartInfo = new FileInfo(prepared.Parts[0].UploadPath);
-                    var pending = new PendingGameUpload
-                    {
-                        LibraryId = library.Id,
-                        Platform = library.Platform,
-                        GameName = gameName,
-                        VersionName = versionName,
-                        SourcePath = source.Path,
-                        FileName = firstPartInfo.Name,
-                        PackagedPath = prepared.Parts[0].UploadPath,
-                        IsTemporaryPackagedArtifact = prepared.Parts[0].DeleteAfterUpload,
-                        IdempotencyKey = Guid.NewGuid().ToString("N"),
-                    };
-
-                    var importSession = client.CreateGamePayloadImportSessionAsync(
-                            new GumoCreateGamePayloadImportSessionRequest
+                var importSession = client.CreateGamePayloadImportSessionAsync(
+                        new GumoCreateGamePayloadImportSessionRequest
+                        {
+                            LibraryId = library.Id,
+                            Platform = library.Platform,
+                            Game = gameTarget,
+                            Version = new GumoUploadVersionTarget
                             {
-                                LibraryId = library.Id,
-                                Platform = library.Platform,
-                                Game = gameTarget,
-                                Version = new GumoUploadVersionTarget
+                                VersionName = versionName,
+                                OriginalSourceName = source.DisplayName,
+                            },
+                            IdempotencyKey = pending.IdempotencyKey,
+                        },
+                        cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                pending.ImportSessionId = importSession.Id;
+                SavePendingUpload(pending);
+
+                var orderedParts = prepared.Parts.OrderBy(part => part.PartIndex).ToList();
+                for (var index = 0; index < orderedParts.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var preparedPart = orderedParts[index];
+                    var fileInfo = new FileInfo(preparedPart.UploadPath);
+                    progressArgs.Text = $"Uploading part {index + 1}/{orderedParts.Count} for '{gameName}'";
+                    progressArgs.CurrentProgressValue = 20 + (index * 50) / Math.Max(orderedParts.Count, 1);
+                    var part = client.CreateImportPartAsync(
+                            importSession.Id,
+                            new GumoCreateImportPartRequest
+                            {
+                                PartIndex = preparedPart.PartIndex,
+                                File = new GumoUploadFileDescriptor
                                 {
-                                    VersionName = versionName,
-                                    OriginalSourceName = source.DisplayName,
+                                    Filename = fileInfo.Name,
+                                    SizeBytes = fileInfo.Length,
                                 },
-                                IdempotencyKey = pending.IdempotencyKey,
                             },
                             cancellationToken)
                         .GetAwaiter()
                         .GetResult();
 
-                    pending.ImportSessionId = importSession.Id;
+                    pending.UploadPartId = part.Id;
                     SavePendingUpload(pending);
 
-                    var orderedParts = prepared.Parts.OrderBy(part => part.PartIndex).ToList();
-                    for (var index = 0; index < orderedParts.Count; index++)
+                    if (part.State == "created" || part.State == "abandoned")
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        var preparedPart = orderedParts[index];
-                        var fileInfo = new FileInfo(preparedPart.UploadPath);
-                        progressArgs.Text = $"Uploading part {index + 1}/{orderedParts.Count} for '{gameName}'";
-                        progressArgs.CurrentProgressValue = 20 + (index * 50) / Math.Max(orderedParts.Count, 1);
-                        var part = client.CreateImportPartAsync(
-                                importSession.Id,
-                                new GumoCreateImportPartRequest
-                                {
-                                    PartIndex = preparedPart.PartIndex,
-                                    File = new GumoUploadFileDescriptor
-                                    {
-                                        Filename = fileInfo.Name,
-                                        SizeBytes = fileInfo.Length,
-                                    },
-                                },
-                                cancellationToken)
+                        client.PutImportPartContentAsync(part.Id, preparedPart.UploadPath, cancellationToken)
                             .GetAwaiter()
                             .GetResult();
-
-                        pending.UploadPartId = part.Id;
-                        SavePendingUpload(pending);
-
-                        if (part.State == "created" || part.State == "abandoned")
-                        {
-                            client.PutImportPartContentAsync(part.Id, preparedPart.UploadPath, cancellationToken)
-                                .GetAwaiter()
-                                .GetResult();
-                        }
                     }
-
-                    progressArgs.Text = $"Finalizing upload for '{gameName}'";
-                    progressArgs.CurrentProgressValue = 75;
-                    var job = client.FinalizeImportSessionAsync(importSession.Id, cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
-                    pending.JobId = job.Id;
-                    SavePendingUpload(pending);
-
-                    var imported = WaitForCompletedUpload(client, pending, cancellationToken, progressArgs);
-                    RemovePendingUpload(pending);
-                    CleanupPreparedArtifact(pending);
-                    return imported;
                 }
+
+                progressArgs.Text = $"Finalizing upload for '{gameName}'";
+                progressArgs.CurrentProgressValue = 75;
+                var job = client.FinalizeImportSessionAsync(importSession.Id, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                pending.JobId = job.Id;
+                SavePendingUpload(pending);
+
+                var completedJob = WaitForCompletedUpload(client, pending, cancellationToken, progressArgs);
+                if (metadataSource != null)
+                {
+                    PushSingleGameMetadataToGumo(client, completedJob, metadataSource, cancellationToken);
+                }
+
+                RemovePendingUpload(pending);
+                CleanupPreparedArtifact(pending);
+                return completedJob;
             }
             catch
             {
-                if (prepared != null)
-                {
-                    CleanupPreparedArtifacts(prepared);
-                }
+                CleanupPreparedArtifacts(prepared);
                 throw;
             }
         }
@@ -699,11 +733,145 @@ namespace Gumo.Playnite
             }
         }
 
+        private void UploadSelectedLocalGamesToGumo(IEnumerable<Game> games)
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before uploading local games.",
+                    "Gumo");
+                return;
+            }
+
+            var uploadableGames = games
+                .Where(CanUploadLocalGameToGumo)
+                .ToList();
+            if (uploadableGames.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "No selected local games have an accessible install directory to upload.",
+                    "Gumo");
+                return;
+            }
+
+            try
+            {
+                using (var client = CreateApiClient())
+                {
+                    var library = SelectLibrary(client, CancellationToken.None);
+                    if (library == null)
+                    {
+                        return;
+                    }
+
+                    var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                        progressArgs =>
+                        {
+                            for (var index = 0; index < uploadableGames.Count; index++)
+                            {
+                                progressArgs.CancelToken.ThrowIfCancellationRequested();
+                                var game = uploadableGames[index];
+                                progressArgs.Text = $"Preparing local game {index + 1}/{uploadableGames.Count}: {game.Name}";
+                                progressArgs.CurrentProgressValue = (index * 100) / Math.Max(uploadableGames.Count, 1);
+
+                                var source = new UploadSourceSelection
+                                {
+                                    Path = game.InstallDirectory,
+                                    IsDirectory = true,
+                                    DefaultGameName = game.Name,
+                                    DisplayName = new DirectoryInfo(game.InstallDirectory).Name,
+                                };
+                                var versionName = !string.IsNullOrWhiteSpace(game.Version)
+                                    ? game.Version.Trim()
+                                    : "Imported";
+                                UploadGameSourceToGumo(
+                                    client,
+                                    source,
+                                    library,
+                                    game.Name,
+                                    versionName,
+                                    game,
+                                    progressArgs);
+                            }
+
+                            progressArgs.CurrentProgressValue = 100;
+                        },
+                        new GlobalProgressOptions("Uploading local Playnite games to Gumo", true)
+                        {
+                            IsIndeterminate = false,
+                        });
+
+                    if (result.Canceled)
+                    {
+                        Logger.Info("Local Playnite game upload to Gumo canceled.");
+                        return;
+                    }
+
+                    if (result.Error != null)
+                    {
+                        throw result.Error;
+                    }
+
+                    PlayniteApi.Dialogs.ShowMessage(
+                        $"Uploaded {uploadableGames.Count} local Playnite game(s) to Gumo.",
+                        "Gumo");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Local Playnite game upload to Gumo canceled.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to upload local Playnite game(s) to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure while uploading local Playnite game(s) to Gumo: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unexpected failure while uploading local Playnite game(s) to Gumo: {exception.Message}",
+                    "Gumo");
+            }
+        }
+
+        private void PushSingleGameMetadataToGumo(
+            GumoApiClient client,
+            GumoJob completedJob,
+            Game sourceGame,
+            CancellationToken cancellationToken)
+        {
+            var gameIdToken = completedJob.Result != null ? completedJob.Result["game_id"] : null;
+            var gameId = gameIdToken != null ? gameIdToken.ToString() : null;
+            if (string.IsNullOrWhiteSpace(gameId))
+            {
+                Logger.Warn($"Completed Gumo upload for '{sourceGame.Name}' did not return a game_id for metadata sync.");
+                return;
+            }
+
+            client.PatchGameAsync(
+                    gameId,
+                    GumoMapper.ToPatchGameRequest(sourceGame),
+                    cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+        }
+
         private bool IsGumoGame(Game game)
         {
             return game != null &&
                    game.PluginId == Id &&
                    !string.IsNullOrWhiteSpace(game.GameId);
+        }
+
+        private bool CanUploadLocalGameToGumo(Game game)
+        {
+            return game != null &&
+                   !IsGumoGame(game) &&
+                   !string.IsNullOrWhiteSpace(game.InstallDirectory) &&
+                   Directory.Exists(game.InstallDirectory);
         }
 
         private void InstallGame(GlobalProgressActionArgs progressArgs, Game game)
@@ -851,10 +1019,10 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var imported = WaitForCompletedUpload(client, pending, cancellationToken);
+            var completedJob = WaitForCompletedUpload(client, pending, cancellationToken);
             RemovePendingUpload(pending);
             CleanupPreparedArtifact(pending);
-            return imported;
+            return ImportCompletedUpload(client, completedJob, pending);
         }
 
         private async Task<Game> ResumePendingImportSessionAsync(
@@ -911,13 +1079,13 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var imported = WaitForCompletedUpload(client, pending, cancellationToken);
+            var completedJob = WaitForCompletedUpload(client, pending, cancellationToken);
             RemovePendingUpload(pending);
             CleanupPreparedArtifact(pending);
-            return imported;
+            return ImportCompletedUpload(client, completedJob, pending);
         }
 
-        private Game WaitForCompletedUpload(
+        private GumoJob WaitForCompletedUpload(
             GumoApiClient client,
             PendingGameUpload pending,
             CancellationToken cancellationToken)
@@ -925,7 +1093,7 @@ namespace Gumo.Playnite
             return WaitForCompletedUpload(client, pending, cancellationToken, null);
         }
 
-        private Game WaitForCompletedUpload(
+        private GumoJob WaitForCompletedUpload(
             GumoApiClient client,
             PendingGameUpload pending,
             CancellationToken cancellationToken,
@@ -944,7 +1112,7 @@ namespace Gumo.Playnite
                             progressArgs.Text = $"Import completed for '{pending.GameName}'";
                             progressArgs.CurrentProgressValue = 100;
                         }
-                        return ImportCompletedUpload(client, job, pending);
+                        return job;
                     case "failed":
                         RemovePendingUpload(pending);
                         CleanupPreparedArtifact(pending);
