@@ -115,7 +115,8 @@ Use this when setting up a fresh Windows VM.
 7. Clone the repo to `C:\dev\gumo\`.
 8. Open `playnite-plugin\src\Gumo.Playnite\Gumo.Playnite.csproj` in Visual Studio.
 9. Restore and build in `Debug`.
-10. Copy the build output into the Playnite extensions directory or use the install helper script.
+10. Start Gumo, sign in to `/admin`, and generate a Playnite integration token from the `API tokens` panel.
+11. Copy the build output into the Playnite extensions directory or use the install helper script.
 
 If any of those steps fail, fix the Windows toolchain first. Do not debug plugin logic until the project builds and Playnite sees the extension files.
 
@@ -189,6 +190,7 @@ If that fails:
 6. Confirm the built assembly and manifest/package files land where expected.
 7. Install or copy the plugin into Playnite.
 8. Start Playnite and confirm the plugin is visible.
+9. Paste the generated API token into the plugin settings.
 
 Expected output area:
 
@@ -198,6 +200,14 @@ At minimum, that directory should contain:
 
 - `Gumo.Playnite.dll`
 - `extension.yaml`
+
+Before testing auth-dependent flows:
+
+1. Start the Gumo backend and frontend.
+2. Open `/admin`.
+3. Sign in with the owner password. In local development, `dev-init` creates the default password `admin` unless you replace it with `just admin-password ...`.
+4. Generate a new integration token from the `API tokens` panel.
+5. Paste that token into the Playnite plugin settings.
 
 ### Daily Iteration
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -34,11 +34,13 @@ Implement the plugin-side HTTP client for the Gumo integration API and the token
 
 ## Tracking Checklist
 
-- [ ] HTTP client added
-- [ ] Token auth wired
-- [ ] Core resource models added
-- [ ] Error mapping added
+- [x] HTTP client added
+- [x] Token auth wired
+- [x] Core resource models added
+- [x] Error mapping added
 
 ## Notes
 
 - Keep the plugin boundary aligned with the integration API, not internal backend tables.
+- Admin-side token creation is now available in the Gumo frontend, so plugin token testing can use real generated credentials instead of manual DB inserts.
+- The client layer and startup probe are implemented. The actual game import/sync behavior remains for Task 06.

@@ -4,12 +4,13 @@ use axum::middleware;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 
-use crate::api::auth::{self, LoginRequest};
+use crate::api::auth::{self, CreateIntegrationTokenRequest, LoginRequest};
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
-    json, AdminSessionResource, GameSummaryResource, GameVersionResource, JobResource,
-    ListResponse, SaveSnapshotResource, UploadResource,
+    json, AdminSessionResource, CreatedIntegrationTokenResource, GameSummaryResource,
+    GameVersionResource, IntegrationTokenResource, JobResource, ListResponse,
+    SaveSnapshotResource, UploadResource,
 };
 use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{self, ListQuery};
@@ -21,6 +22,14 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/games/{id}/versions", get(list_versions))
         .route("/versions/{id}", patch(patch_version))
         .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
+        .route(
+            "/integration-tokens",
+            get(list_integration_tokens).post(create_integration_token),
+        )
+        .route(
+            "/integration-tokens/{id}/disable",
+            post(disable_integration_token),
+        )
         .route("/uploads", get(list_uploads))
         .route("/uploads/{id}", get(get_upload))
         .route("/jobs", get(list_jobs))
@@ -171,4 +180,30 @@ async fn get_job(
     State(state): State<AppState>,
 ) -> Result<Json<JobResource>, ApiError> {
     Ok(Json(upload_jobs::get_job(&state, &id).await?))
+}
+
+async fn list_integration_tokens(
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<IntegrationTokenResource>>, ApiError> {
+    let items = auth::list_integration_tokens(state.db()).await?;
+    Ok(json(ListResponse {
+        items,
+        next_cursor: None,
+    }))
+}
+
+async fn create_integration_token(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateIntegrationTokenRequest>,
+) -> Result<Json<CreatedIntegrationTokenResource>, ApiError> {
+    Ok(Json(
+        auth::create_integration_token(state.db(), payload.label).await?,
+    ))
+}
+
+async fn disable_integration_token(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<IntegrationTokenResource>, ApiError> {
+    Ok(Json(auth::disable_integration_token(state.db(), &id).await?))
 }

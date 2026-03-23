@@ -44,9 +44,10 @@ Windows quickstart:
 
 1. Open `Gumo.Playnite.sln` in Visual Studio.
 2. Build `Debug`.
-3. Copy the build output into `%APPDATA%\Playnite\Extensions\Gumo` or run `scripts\install-dev.ps1`.
-4. Start Playnite.
-5. Confirm the extension loads.
+3. Start Gumo and generate an integration token from the admin UI.
+4. Copy the build output into `%APPDATA%\Playnite\Extensions\Gumo` or run `scripts\install-dev.ps1`.
+5. Start Playnite.
+6. Confirm the extension loads and accepts the token in settings.
 
 Reference:
 
@@ -54,7 +55,7 @@ Reference:
 
 ## Current State
 
-This is an initial scaffold only.
+This is an early integration build.
 
 Implemented:
 
@@ -62,11 +63,12 @@ Implemented:
 - manifest file
 - settings object and settings view
 - logging baseline
+- token-authenticated Gumo API client wrapper
+- typed models for games, versions, uploads, jobs, install manifests, and save manifests
+- startup connectivity probe with structured API error logging
 - placeholder library import methods
 
 Not implemented yet:
 
-- Gumo API client
-- authentication flow
 - import/upload/install/save behavior
 - packaging validation in Playnite

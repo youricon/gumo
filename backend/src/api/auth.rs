@@ -9,11 +9,15 @@ use axum::response::Response;
 use hex::encode as hex_encode;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use sqlx::Row;
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::state::{AdminSession, AppState};
-use crate::api::types::AdminSessionResource;
+use crate::api::types::{
+    AdminSessionResource, CreatedIntegrationTokenResource, IntegrationTokenResource,
+};
 use crate::domain::AdminMode;
 
 const ADMIN_SESSION_COOKIE: &str = "gumo_admin_session";
@@ -22,6 +26,11 @@ const ADMIN_SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 12);
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateIntegrationTokenRequest {
+    pub label: String,
 }
 
 pub async fn require_integration_token(
@@ -37,7 +46,7 @@ pub async fn require_integration_token(
         .ok_or_else(|| unauthorized("missing bearer token"))?;
 
     let provided_hash = hash_secret(provided);
-    let valid: bool = sqlx::query(
+    let valid = sqlx::query(
         "SELECT 1 FROM integration_tokens WHERE token_hash = ?1 AND is_enabled = 1 LIMIT 1",
     )
     .bind(provided_hash)
@@ -102,10 +111,7 @@ pub fn current_session_resource(
     }
 }
 
-pub fn login_local(
-    state: &AppState,
-    password: &str,
-) -> Result<Option<HeaderValue>, ApiError> {
+pub fn login_local(state: &AppState, password: &str) -> Result<Option<HeaderValue>, ApiError> {
     if state.config().auth.admin_mode != AdminMode::Local {
         return Err(ApiError::bad_request(
             "admin login is unavailable when proxy auth is enabled",
@@ -147,6 +153,99 @@ pub fn logout_local(
     }
 
     build_expired_cookie().map(Some)
+}
+
+pub async fn list_integration_tokens(
+    pool: &SqlitePool,
+) -> Result<Vec<IntegrationTokenResource>, ApiError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT public_id, label, is_enabled, created_at, updated_at
+        FROM integration_tokens
+        ORDER BY created_at DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(internal_error)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| IntegrationTokenResource {
+            id: row.get("public_id"),
+            label: row.get("label"),
+            enabled: row.get::<i64, _>("is_enabled") == 1,
+            created_at: timestamp_to_rfc3339(&row.get::<String, _>("created_at")),
+            updated_at: timestamp_to_rfc3339(&row.get::<String, _>("updated_at")),
+        })
+        .collect())
+}
+
+pub async fn create_integration_token(
+    pool: &SqlitePool,
+    label: String,
+) -> Result<CreatedIntegrationTokenResource, ApiError> {
+    let label = label.trim();
+    if label.is_empty() {
+        return Err(ApiError::bad_request("token label is required"));
+    }
+
+    let public_id = format!("token_{}", Uuid::new_v4().simple());
+    let plaintext_token = format!(
+        "gumo_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
+    let token_hash = hash_secret(&plaintext_token);
+
+    sqlx::query(
+        r#"
+        INSERT INTO integration_tokens (public_id, label, token_hash, is_enabled, created_at, updated_at)
+        VALUES (?1, ?2, ?3, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        "#,
+    )
+    .bind(&public_id)
+    .bind(label)
+    .bind(token_hash)
+    .execute(pool)
+    .await
+    .map_err(|err| {
+        let message = err.to_string();
+        if message.contains("UNIQUE constraint failed: integration_tokens.label") {
+            ApiError::bad_request("token label must be unique")
+        } else {
+            internal_error(err)
+        }
+    })?;
+
+    let token = get_integration_token(pool, &public_id).await?;
+    Ok(CreatedIntegrationTokenResource {
+        token,
+        plaintext_token,
+    })
+}
+
+pub async fn disable_integration_token(
+    pool: &SqlitePool,
+    token_id: &str,
+) -> Result<IntegrationTokenResource, ApiError> {
+    let result = sqlx::query(
+        r#"
+        UPDATE integration_tokens
+        SET is_enabled = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE public_id = ?1
+        "#,
+    )
+    .bind(token_id)
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("integration token", token_id));
+    }
+
+    get_integration_token(pool, token_id).await
 }
 
 fn current_admin_identity(
@@ -220,6 +319,32 @@ fn verify_local_password(state: &AppState, password: &str) -> Result<(), ApiErro
     }
 }
 
+async fn get_integration_token(
+    pool: &SqlitePool,
+    token_id: &str,
+) -> Result<IntegrationTokenResource, ApiError> {
+    let row = sqlx::query(
+        r#"
+        SELECT public_id, label, is_enabled, created_at, updated_at
+        FROM integration_tokens
+        WHERE public_id = ?1
+        "#,
+    )
+    .bind(token_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(|| ApiError::not_found("integration token", token_id))?;
+
+    Ok(IntegrationTokenResource {
+        id: row.get("public_id"),
+        label: row.get("label"),
+        enabled: row.get::<i64, _>("is_enabled") == 1,
+        created_at: timestamp_to_rfc3339(&row.get::<String, _>("created_at")),
+        updated_at: timestamp_to_rfc3339(&row.get::<String, _>("updated_at")),
+    })
+}
+
 fn build_session_cookie(token: &str, expires_at_unix: u64) -> Result<HeaderValue, ApiError> {
     let max_age = expires_at_unix.saturating_sub(unix_now());
     HeaderValue::from_str(&format!(
@@ -261,6 +386,10 @@ fn hash_secret(value: &str) -> String {
     hex_encode(Sha256::digest(value.as_bytes()))
 }
 
+fn timestamp_to_rfc3339(value: &str) -> String {
+    value.replace(' ', "T") + "Z"
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -270,6 +399,14 @@ fn unix_now() -> u64 {
 
 fn unauthorized(message: &str) -> ApiError {
     ApiError::new(axum::http::StatusCode::UNAUTHORIZED, "unauthorized", message)
+}
+
+fn internal_error(err: impl std::fmt::Display) -> ApiError {
+    ApiError::new(
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        "internal_error",
+        err.to_string(),
+    )
 }
 
 pub fn set_cookie_header_name() -> &'static axum::http::HeaderName {

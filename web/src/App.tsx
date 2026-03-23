@@ -90,6 +90,19 @@ type AdminSession = {
   username: string | null;
 };
 
+type IntegrationToken = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type CreatedIntegrationToken = {
+  token: IntegrationToken;
+  plaintext_token: string;
+};
+
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -414,6 +427,7 @@ function AdminPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [integrationTokens, setIntegrationTokens] = useState<IntegrationToken[]>([]);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -422,6 +436,9 @@ function AdminPage() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [savingGame, setSavingGame] = useState(false);
   const [savingVersion, setSavingVersion] = useState(false);
+  const [creatingToken, setCreatingToken] = useState(false);
+  const [tokenLabel, setTokenLabel] = useState("");
+  const [newPlaintextToken, setNewPlaintextToken] = useState<string | null>(null);
 
   const [gameForm, setGameForm] = useState({
     name: "",
@@ -475,14 +492,16 @@ function AdminPage() {
     let cancelled = false;
     Promise.all([
       api<ListResponse<Game>>("/api/admin/games"),
+      api<ListResponse<IntegrationToken>>("/api/admin/integration-tokens"),
       api<ListResponse<Upload>>("/api/admin/uploads?scope=recent"),
       api<ListResponse<Job>>("/api/admin/jobs?scope=recent"),
     ])
-      .then(([gameResponse, uploadResponse, jobResponse]) => {
+      .then(([gameResponse, tokenResponse, uploadResponse, jobResponse]) => {
         if (cancelled) {
           return;
         }
         setGames(gameResponse.items);
+        setIntegrationTokens(tokenResponse.items);
         setUploads(uploadResponse.items);
         setJobs(jobResponse.items);
         setSelectedGameId((current) => current ?? gameResponse.items[0]?.id ?? null);
@@ -596,10 +615,12 @@ function AdminPage() {
     });
     setSession(next);
     setGames([]);
+    setIntegrationTokens([]);
     setUploads([]);
     setJobs([]);
     setSelectedGameId(null);
     setSelectedVersionId(null);
+    setNewPlaintextToken(null);
   }
 
   async function saveGame() {
@@ -652,6 +673,43 @@ function AdminPage() {
       setAdminError(err instanceof Error ? err.message : "Failed to save version");
     } finally {
       setSavingVersion(false);
+    }
+  }
+
+  async function createIntegrationToken(event: FormEvent) {
+    event.preventDefault();
+    setCreatingToken(true);
+    setAdminError(null);
+    try {
+      const created = await api<CreatedIntegrationToken>("/api/admin/integration-tokens", {
+        method: "POST",
+        body: JSON.stringify({ label: tokenLabel }),
+      });
+      setIntegrationTokens((items) => [created.token, ...items]);
+      setNewPlaintextToken(created.plaintext_token);
+      setTokenLabel("");
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Failed to create integration token");
+    } finally {
+      setCreatingToken(false);
+    }
+  }
+
+  async function disableIntegrationToken(tokenId: string) {
+    setAdminError(null);
+    try {
+      const disabled = await api<IntegrationToken>(
+        `/api/admin/integration-tokens/${tokenId}/disable`,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        },
+      );
+      setIntegrationTokens((items) =>
+        items.map((item) => (item.id === disabled.id ? disabled : item)),
+      );
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Failed to disable integration token");
     }
   }
 
@@ -963,6 +1021,60 @@ function AdminPage() {
       </div>
 
       <div className="admin-grid">
+        <div className="panel">
+          <div className="section-heading compact">
+            <p className="eyebrow">Integrations</p>
+            <h2>API tokens</h2>
+          </div>
+          <form className="stack inset-bottom" onSubmit={createIntegrationToken}>
+            <label className="field">
+              <span>Label</span>
+              <input
+                placeholder="Playnite desktop"
+                value={tokenLabel}
+                onChange={(event) => setTokenLabel(event.target.value)}
+              />
+            </label>
+            <button className="primary-button" disabled={creatingToken} type="submit">
+              {creatingToken ? "Generating…" : "Generate new token"}
+            </button>
+          </form>
+          {newPlaintextToken ? (
+            <div className="panel inset-bottom">
+              <p className="eyebrow">New token</p>
+              <p className="muted">Copy it now. It will not be shown again.</p>
+              <code>{newPlaintextToken}</code>
+            </div>
+          ) : null}
+          <div className="table-list">
+            {integrationTokens.map((token) => (
+              <article key={token.id} className="table-row">
+                <div>
+                  <strong>{token.label}</strong>
+                  <p>{token.enabled ? "enabled" : "disabled"}</p>
+                </div>
+                <div className="row-meta">
+                  <span>{timestampLabel(token.created_at)}</span>
+                  {token.enabled ? (
+                    <button
+                      className="text-button"
+                      onClick={() => disableIntegrationToken(token.id)}
+                      type="button"
+                    >
+                      Disable
+                    </button>
+                  ) : (
+                    <span className="pill">disabled</span>
+                  )}
+                </div>
+              </article>
+            ))}
+            {integrationTokens.length === 0 ? (
+              <p className="muted">No integration tokens have been created yet.</p>
+            ) : null}
+          </div>
+        </div>
+
         <div className="panel">
           <div className="section-heading compact">
             <p className="eyebrow">Uploads</p>

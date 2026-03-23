@@ -20,6 +20,21 @@ pub struct AdminSessionResource {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct IntegrationTokenResource {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreatedIntegrationTokenResource {
+    pub token: IntegrationTokenResource,
+    pub plaintext_token: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PlatformResource {
     pub id: String,
     pub enabled: bool,

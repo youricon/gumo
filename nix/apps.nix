@@ -33,6 +33,9 @@ let
     name = "gumo-dev-init";
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
+      default_password="admin"
+      password_file="./.local/gumo/secrets/admin-password-hash"
+
       mkdir -p ./.local/gumo/data
       mkdir -p ./.local/gumo/cache
       mkdir -p ./.local/gumo/library
@@ -41,6 +44,11 @@ let
 
       if [ ! -f ./.local/gumo/config.toml ]; then
         cp ./config/gumo.example.toml ./.local/gumo/config.toml
+      fi
+
+      if [ ! -f "$password_file" ]; then
+        printf 'sha256:%s\n' "$(printf '%s' "$default_password" | sha256sum | cut -d' ' -f1)" > "$password_file"
+        echo "Created $password_file with default password: $default_password"
       fi
 
       echo "Initialized ./.local/gumo/"

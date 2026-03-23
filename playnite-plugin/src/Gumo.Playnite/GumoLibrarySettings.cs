@@ -56,6 +56,11 @@ namespace Gumo.Playnite
                    !string.IsNullOrWhiteSpace(ApiToken);
         }
 
+        public string NormalizedServerUrl()
+        {
+            return (GumoServerUrl ?? string.Empty).Trim().TrimEnd('/');
+        }
+
         public void BeginEdit()
         {
             editingServerUrl = GumoServerUrl;

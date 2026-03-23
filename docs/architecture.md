@@ -2659,7 +2659,6 @@ port = 8080
 [storage]
 database_path = "./.local/gumo/data/gumo.db"
 cache_dir = "./.local/gumo/cache"
-archive_format = "zip"
 split_part_size_bytes = 2147483648
 deduplicate_by_checksum = true
 
@@ -2686,6 +2685,8 @@ visibility = "private"
 ```
 
 ## Config Ownership Boundaries
+
+For local development, `nix run .#dev-init` or `just dev-init` should create the repo-local state tree and a default local admin password hash using the password `admin` if that file does not already exist.
 
 App config should own:
 
