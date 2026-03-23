@@ -17,14 +17,14 @@ use crate::upload_jobs::{self, ListQuery};
 pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/games", get(list_games))
-        .route("/games/:id", get(get_game).patch(patch_game))
-        .route("/games/:id/versions", get(list_versions))
-        .route("/versions/:id", patch(patch_version))
-        .route("/versions/:id/save-snapshots", get(list_save_snapshots))
+        .route("/games/{id}", get(get_game).patch(patch_game))
+        .route("/games/{id}/versions", get(list_versions))
+        .route("/versions/{id}", patch(patch_version))
+        .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
         .route("/uploads", get(list_uploads))
-        .route("/uploads/:id", get(get_upload))
+        .route("/uploads/{id}", get(get_upload))
         .route("/jobs", get(list_jobs))
-        .route("/jobs/:id", get(get_job))
+        .route("/jobs/{id}", get(get_job))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_admin_session,

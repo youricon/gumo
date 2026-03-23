@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -41,12 +41,14 @@ Test the NixOS module and packaged runtime using local VM tests rather than real
 
 ## Tracking Checklist
 
-- [ ] Startup VM test
-- [ ] Config rendering test
-- [ ] Data path test
-- [ ] DB creation test
-- [ ] Managed storage path test
+- [x] Startup VM test
+- [x] Config rendering test
+- [x] Data path test
+- [x] DB creation test
+- [x] Managed storage path test
 
 ## Notes
 
 - VM tests should be lightweight but cover the critical deployment path.
+- `nix/vm-test.nix` boots a NixOS VM with `services.gumo.enable = true`, waits for the service and port, checks rendered config contents, writable directories, and SQLite creation, then hits `/api/health`.
+- Verified with `nix build .#checks.x86_64-linux.vm-module`.

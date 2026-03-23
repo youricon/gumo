@@ -31,7 +31,7 @@ This directory tracks the initial implementation plan for Gumo.
 | 05 | Uploads And Jobs | Completed | 03, 04 |
 | 06 | Playnite Integration Contract | Completed | 02, 04, 05 |
 | 07 | Web Catalog And Admin | Completed | 04, 05 |
-| 08 | NixOS And Verification | Not started | 01, 03, 04, 05, 07 |
+| 08 | NixOS And Verification | Completed | 01, 03, 04, 05, 07 |
 
 ## Notes
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -41,11 +41,13 @@ Provide the Nix development workflow for running backend and frontend directly w
 
 ## Tracking Checklist
 
-- [ ] Dev shell defined
-- [ ] Backend dev app defined
-- [ ] Frontend dev app defined
-- [ ] Local storage workflow verified
+- [x] Dev shell defined
+- [x] Backend dev app defined
+- [x] Frontend dev app defined
+- [x] Local storage workflow verified
 
 ## Notes
 
 - Keep development workflow fast and independent of the NixOS module.
+- Verified with `nix run .#dev-init` and `nix develop --command ...` checks for shell env/tooling.
+- `nix/apps.nix` and `nix/devshell.nix` keep the development path pointed at `./.local/gumo/`.

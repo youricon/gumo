@@ -13,8 +13,8 @@ use crate::playnite;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/games", get(list_games))
-        .route("/games/:id", get(get_game))
-        .route("/games/:id/versions", get(list_game_versions))
+        .route("/games/{id}", get(get_game))
+        .route("/games/{id}/versions", get(list_game_versions))
         .route("/platforms", get(list_platforms))
         .route("/genres", get(list_genres))
         .route("/libraries", get(list_libraries))

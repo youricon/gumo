@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -42,12 +42,14 @@ Implement the `nixosModules.gumo` wrapper around the app-native config and packa
 
 ## Tracking Checklist
 
-- [ ] Module option surface
-- [ ] TOML rendering
-- [ ] Directory creation
-- [ ] Systemd service wiring
-- [ ] Firewall option wiring
+- [x] Module option surface
+- [x] TOML rendering
+- [x] Directory creation
+- [x] Systemd service wiring
+- [x] Firewall option wiring
 
 ## Notes
 
 - The module is a wrapper, not the source of truth for app behavior.
+- `nix/module.nix` now derives storage paths from `dataDir`, renders `/etc/gumo/gumo.toml`, creates writable directories through tmpfiles, and wires the systemd unit around the packaged app.
+- The module keeps app-native config in `settings` and only wraps deployment concerns.

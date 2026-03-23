@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -41,11 +41,13 @@ Define the flake package outputs for backend, frontend, and combined app artifac
 
 ## Tracking Checklist
 
-- [ ] Backend package
-- [ ] Frontend package
-- [ ] Combined package
-- [ ] Flake package outputs exposed
+- [x] Backend package
+- [x] Frontend package
+- [x] Combined package
+- [x] Flake package outputs exposed
 
 ## Notes
 
 - Keep the package layout compatible with backend-served frontend assets.
+- `nix/packages.nix` now builds the frontend with `buildNpmPackage`, installs `dist` into `share/gumo/web`, and combines it with the backend package.
+- Verified with `nix build .#gumo-backend`, `nix build .#gumo-web`, and `nix build .#gumo`.

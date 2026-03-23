@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -50,14 +50,14 @@ Package the application through Nix, provide the NixOS module wrapper, and add v
 
 ## Tracking Checklist
 
-- [ ] Backend package defined
-- [ ] Frontend package defined
-- [ ] Combined package defined
-- [ ] NixOS module implemented
-- [ ] Config rendering implemented
-- [ ] VM tests implemented
-- [ ] Flake checks implemented
-- [ ] OCI path kept viable
+- [x] Backend package defined
+- [x] Frontend package defined
+- [x] Combined package defined
+- [x] NixOS module implemented
+- [x] Config rendering implemented
+- [x] VM tests implemented
+- [x] Flake checks implemented
+- [x] OCI path kept viable
 
 ## Blockers
 
@@ -66,3 +66,5 @@ Package the application through Nix, provide the NixOS module wrapper, and add v
 ## Notes
 
 - The NixOS module must stay a wrapper, not a separate runtime definition.
+- Completed through `nix/packages.nix`, `nix/module.nix`, `nix/vm-test.nix`, `nix/checks.nix`, `nix/apps.nix`, and `nix/devshell.nix`.
+- Verified with `nix run .#dev-init`, `nix develop --command ...`, `nix build .#checks.x86_64-linux.vm-module`, and `nix flake check`.

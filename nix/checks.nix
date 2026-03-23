@@ -1,18 +1,17 @@
 { pkgs, self }:
 let
-  packages = self.packages.${pkgs.system};
+  packages = self.packages.${pkgs.stdenv.hostPlatform.system};
 in
 {
-  backend-build = packages.gumo-backend;
-  web-layout = pkgs.runCommand "gumo-web-layout-check" { } ''
-    test -f ${../web/package.json}
-    test -f ${../web/index.html}
-    test -f ${../web/src/main.tsx}
-    mkdir -p "$out"
-  '';
+  backend-package = packages.gumo-backend;
+  web-package = packages.gumo-web;
+  combined-package = packages.gumo;
   local-dev-docs = pkgs.runCommand "gumo-local-dev-docs-check" { } ''
     test -f ${../docs/local-development.md}
     test -f ${../config/gumo.example.toml}
     mkdir -p "$out"
   '';
+  vm-module = import ./vm-test.nix {
+    inherit pkgs self;
+  };
 }

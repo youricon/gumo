@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Parent Task
 
@@ -41,12 +41,14 @@ Expose the verification surface through flake checks so build, test, and VM vali
 
 ## Tracking Checklist
 
-- [ ] Package build checks
-- [ ] Backend test checks
-- [ ] Frontend test checks
-- [ ] VM test checks
-- [ ] Flake check surface reviewed
+- [x] Package build checks
+- [x] Backend test checks
+- [x] Frontend test checks
+- [x] VM test checks
+- [x] Flake check surface reviewed
 
 ## Notes
 
 - Keep checks practical; do not bloat the default verification path with low-value work.
+- `nix/checks.nix` now exposes backend, web, combined package, docs, and VM module checks.
+- Verified with `nix flake check`.
