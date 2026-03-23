@@ -1014,7 +1014,10 @@ namespace Gumo.Playnite
                     .ToString(sha256.ComputeHash(stream))
                     .Replace("-", string.Empty)
                     .ToLowerInvariant();
-                if (!string.Equals(actualChecksum, expectedChecksum, StringComparison.OrdinalIgnoreCase))
+                var normalizedExpected = expectedChecksum.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+                    ? expectedChecksum.Substring("sha256:".Length)
+                    : expectedChecksum;
+                if (!string.Equals(actualChecksum, normalizedExpected, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException("Downloaded archive checksum verification failed.");
                 }
