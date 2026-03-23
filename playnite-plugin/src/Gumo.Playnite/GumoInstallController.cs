@@ -17,10 +17,5 @@ namespace Gumo.Playnite
         {
             plugin.InstallGameFromController(Game);
         }
-
-        public override void Uninstall(UninstallActionArgs args)
-        {
-            plugin.UninstallGameFromController(Game);
-        }
     }
 }

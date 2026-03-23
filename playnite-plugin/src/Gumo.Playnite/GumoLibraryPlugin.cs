@@ -118,43 +118,53 @@ namespace Gumo.Playnite
             };
         }
 
-        public override IEnumerable<InstallAction> GetInstallActions(GetInstallActionsArgs args)
+        public override IEnumerable<InstallController> GetInstallActions(GetInstallActionsArgs args)
         {
             if (args?.Game == null || !IsGumoGame(args.Game))
             {
-                return Enumerable.Empty<InstallAction>();
+                return Enumerable.Empty<InstallController>();
             }
 
             return new[]
             {
-                new InstallAction(new GumoInstallController(this, args.Game))
-                {
-                    Name = "Install from Gumo",
-                }
+                new GumoInstallController(this, args.Game)
             };
         }
 
-        public override IEnumerable<PlayAction> GetPlayActions(GetPlayActionsArgs args)
+        public override IEnumerable<UninstallController> GetUninstallActions(GetUninstallActionsArgs args)
         {
             if (args?.Game == null || !IsGumoGame(args.Game))
             {
-                return Enumerable.Empty<PlayAction>();
+                return Enumerable.Empty<UninstallController>();
+            }
+
+            return new[]
+            {
+                new GumoUninstallController(this, args.Game)
+            };
+        }
+
+        public override IEnumerable<PlayController> GetPlayActions(GetPlayActionsArgs args)
+        {
+            if (args?.Game == null || !IsGumoGame(args.Game))
+            {
+                return Enumerable.Empty<PlayController>();
             }
 
             var installed = settings.GetInstalledGame(args.Game.GameId);
             if (installed == null || string.IsNullOrWhiteSpace(installed.ExecutablePath) || !File.Exists(installed.ExecutablePath))
             {
-                return Enumerable.Empty<PlayAction>();
+                return Enumerable.Empty<PlayController>();
             }
 
             return new[]
             {
-                new PlayAction
+                new AutomaticPlayController(args.Game)
                 {
                     Name = "Play",
-                    Type = PlayActionType.File,
+                    Type = GenericPlayActionType.File,
                     Path = installed.ExecutablePath,
-                    IsPlayAction = true,
+                    WorkingDir = Path.GetDirectoryName(installed.ExecutablePath),
                 }
             };
         }
@@ -337,6 +347,7 @@ namespace Gumo.Playnite
 
                 settings.RemoveInstalledGame(game.GameId);
                 game.InstallDirectory = null;
+                game.IsInstalled = false;
             }
             catch (Exception exception)
             {
