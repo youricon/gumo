@@ -1026,14 +1026,18 @@ namespace Gumo.Playnite
 
         private string ResolveExecutablePath(string installDirectory)
         {
-            var executables = Directory
-                .EnumerateFiles(installDirectory, "*.exe", SearchOption.AllDirectories)
-                .OrderBy(path => path)
-                .ToList();
+            var executables = FindExecutables(installDirectory);
 
             if (executables.Count == 0)
             {
-                throw new InvalidOperationException("No executable was found in the extracted install directory.");
+                TryExpandSingleNestedZip(installDirectory);
+                executables = FindExecutables(installDirectory);
+            }
+
+            if (executables.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "No executable was found in the extracted install directory. The uploaded payload may need different extraction handling.");
             }
 
             if (executables.Count == 1)
@@ -1060,6 +1064,40 @@ namespace Gumo.Playnite
             }
 
             return executables.First(path => string.Equals(path, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static List<string> FindExecutables(string installDirectory)
+        {
+            return Directory
+                .EnumerateFiles(installDirectory, "*.exe", SearchOption.AllDirectories)
+                .OrderBy(path => path)
+                .ToList();
+        }
+
+        private static void TryExpandSingleNestedZip(string installDirectory)
+        {
+            var zipFiles = Directory
+                .EnumerateFiles(installDirectory, "*.zip", SearchOption.AllDirectories)
+                .OrderBy(path => path)
+                .ToList();
+
+            if (zipFiles.Count != 1)
+            {
+                return;
+            }
+
+            var nestedZip = zipFiles[0];
+            var targetDirectory = Path.Combine(
+                Path.GetDirectoryName(nestedZip) ?? installDirectory,
+                Path.GetFileNameWithoutExtension(nestedZip));
+
+            if (Directory.Exists(targetDirectory) && Directory.EnumerateFileSystemEntries(targetDirectory).Any())
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(targetDirectory);
+            ZipFile.ExtractToDirectory(nestedZip, targetDirectory);
         }
 
         private static string SanitizePathComponent(string value)
