@@ -156,7 +156,9 @@ New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $safeVersion = $manifest.Version -replace '[^0-9A-Za-z._-]', '_'
 $artifactBaseName = "$($manifest.Id)-$safeVersion"
+$packageRootName = $manifest.Id
 $stagingDir = Join-Path $outputRoot $artifactBaseName
+$packageRootDir = Join-Path $stagingDir $packageRootName
 $artifactPath = Join-Path $outputRoot "$artifactBaseName.pext"
 $zipArtifactPath = Join-Path $outputRoot "$artifactBaseName.zip"
 
@@ -173,6 +175,7 @@ if (Test-Path $zipArtifactPath) {
 }
 
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+New-Item -ItemType Directory -Force -Path $packageRootDir | Out-Null
 
 $includePatterns = @("*.dll", "*.exe", "*.yaml", "*.json", "*.config")
 $excludeNames = @("PlayniteSDK.xml", "Gumo.Playnite.pdb", "Gumo.Playnite.xml")
@@ -181,15 +184,15 @@ foreach ($pattern in $includePatterns) {
     Get-ChildItem -Path $buildDir -Filter $pattern -File | Where-Object {
         $excludeNames -notcontains $_.Name
     } | ForEach-Object {
-        Copy-Item -Path $_.FullName -Destination (Join-Path $stagingDir $_.Name) -Force
+        Copy-Item -Path $_.FullName -Destination (Join-Path $packageRootDir $_.Name) -Force
     }
 }
 
-if (-not (Test-Path (Join-Path $stagingDir "extension.yaml"))) {
-    Copy-Item -Path $manifestPath -Destination (Join-Path $stagingDir "extension.yaml") -Force
+if (-not (Test-Path (Join-Path $packageRootDir "extension.yaml"))) {
+    Copy-Item -Path $manifestPath -Destination (Join-Path $packageRootDir "extension.yaml") -Force
 }
 
-Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipArtifactPath -CompressionLevel Optimal
+Compress-Archive -Path $packageRootDir -DestinationPath $zipArtifactPath -CompressionLevel Optimal
 Move-Item -Path $zipArtifactPath -Destination $artifactPath
 
 $artifactSize = (Get-Item $artifactPath).Length
