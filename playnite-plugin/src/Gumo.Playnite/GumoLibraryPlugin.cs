@@ -7,7 +7,6 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
-using System.Windows.Forms;
 using Microsoft.Win32;
 using Playnite.SDK;
 using Playnite.SDK.Events;
@@ -1099,10 +1098,10 @@ namespace Gumo.Playnite
             var mode = modeSelection.SelectedString.Trim().ToLowerInvariant();
             if (mode == "folder" || mode == "directory")
             {
-                using (var dialog = new FolderBrowserDialog())
+                using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
                 {
                     dialog.Description = "Select game folder to upload to Gumo";
-                    if (dialog.ShowDialog() != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
                     {
                         return null;
                     }
