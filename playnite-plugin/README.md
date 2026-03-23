@@ -17,8 +17,6 @@ Responsibilities:
 
 ## Layout
 
-- `src/Gumo.Playnite/`
-  - legacy SDK-style plugin prototype
 - `Gumo/`
   - Toolbox-generated Playnite plugin project
   - current Windows build and packaging target

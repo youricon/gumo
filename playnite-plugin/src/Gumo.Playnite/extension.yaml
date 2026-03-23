@@ -1,9 +1,0 @@
-Id: Gumo_Playnite_Plugin
-Name: Gumo
-Author: gumo
-Version: 0.1
-Module: Gumo.Playnite.dll
-Type: GameLibrary
-Links:
-  - Name: Repository
-    Url: https://github.com/JosefNemec/Playnite

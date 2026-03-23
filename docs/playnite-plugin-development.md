@@ -198,7 +198,7 @@ Expected output area:
 
 At minimum, that directory should contain:
 
-- `Gumo.Playnite.dll`
+- `Gumo.dll`
 - `extension.yaml`
 
 Before testing auth-dependent flows:

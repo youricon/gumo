@@ -6,7 +6,7 @@ These instructions apply only to work under `playnite-plugin/`. Keep plugin-spec
 
 ## Project Structure
 
-`src/Gumo.Playnite/` contains the plugin source, XAML views, and the `.csproj`. `scripts/` contains Windows helper scripts for install and packaging. `packaging/` is reserved for release assets. Open `Gumo.Playnite.sln` in Visual Studio for normal development.
+`Gumo/` contains the active Toolbox-generated plugin project, source files, XAML views, `extension.yaml`, and `BuildInclude.txt`. `scripts/` contains Windows helper scripts for install and packaging. `packaging/` is reserved for release assets. Open `Gumo/Gumo.sln` in Visual Studio for normal development.
 
 ## Build and Validation
 
