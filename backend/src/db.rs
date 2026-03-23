@@ -198,7 +198,7 @@ enabled = true
             root.join("cache").display(),
             root.join("tmp").display(),
             root.join("secrets").display(),
-            root.join("storage").display(),
+            root.join("library").display(),
         );
 
         let config: AppConfig = toml::from_str(&raw).expect("test config should parse");
