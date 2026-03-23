@@ -17,7 +17,12 @@ namespace Gumo.Playnite
         {
             if (plugin.InstallGameFromController(Game))
             {
-                InvokeOnInstalled();
+                InvokeOnInstalled(
+                    new GameInstalledEventArgs(
+                        new GameInstallationData
+                        {
+                            InstallDirectory = Game.InstallDirectory,
+                        }));
             }
         }
     }
