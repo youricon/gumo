@@ -46,6 +46,9 @@ namespace Gumo.Playnite
                 developers = ToNames(game.Developers),
                 publishers = ToNames(game.Publishers),
                 links = ToPatchLinks(game.Links),
+                cover_image = EmptyToNull(game.CoverImage),
+                background_image = EmptyToNull(game.BackgroundImage),
+                icon = EmptyToNull(game.Icon),
             };
         }
 
