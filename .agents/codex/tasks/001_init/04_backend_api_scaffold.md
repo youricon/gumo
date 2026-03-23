@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -41,12 +41,12 @@ Set up the Rust backend service, HTTP routing, config wiring, and baseline API s
 
 ## Tracking Checklist
 
-- [ ] Backend bootstrap created
-- [ ] App state wiring created
-- [ ] Public routes scaffolded
-- [ ] Integration routes scaffolded
-- [ ] Admin routes scaffolded
-- [ ] JSON error model implemented
+- [x] Backend bootstrap created
+- [x] App state wiring created
+- [x] Public routes scaffolded
+- [x] Integration routes scaffolded
+- [x] Admin routes scaffolded
+- [x] JSON error model implemented
 
 ## Blockers
 
@@ -55,3 +55,5 @@ Set up the Rust backend service, HTTP routing, config wiring, and baseline API s
 ## Notes
 
 - Keep API ids externalized through `public_id`.
+- Implemented `axum` router modules under `backend/src/api/` with public, Playnite integration, and admin route groups.
+- Added shared JSON list/error envelopes plus packaged frontend static serving fallback through `tower-http`.
