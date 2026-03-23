@@ -168,13 +168,28 @@ namespace Gumo.Playnite
 
             try
             {
-                using (var client = CreateApiClient())
-                {
-                    var gameCount = client.ProbeAsync(CancellationToken.None).GetAwaiter().GetResult();
-                    PlayniteApi.Dialogs.ShowMessage(
-                        $"Connection succeeded. Gumo returned {gameCount} visible game(s).",
-                        "Gumo");
-                }
+                int visibleGameCount = 0;
+                PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        using (var client = CreateApiClient())
+                        {
+                            progressArgs.Text = "Checking Gumo API connectivity";
+                            visibleGameCount = client.ProbeAsync(progressArgs.CancelToken).GetAwaiter().GetResult();
+                        }
+                    },
+                    new GlobalProgressOptions("Testing Gumo connection", true)
+                    {
+                        IsIndeterminate = true,
+                    });
+
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"Connection succeeded. Gumo returned {visibleGameCount} visible game(s).",
+                    "Gumo");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Gumo connection test canceled.");
             }
             catch (GumoApiException exception)
             {
