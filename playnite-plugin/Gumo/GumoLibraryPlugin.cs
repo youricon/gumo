@@ -22,6 +22,7 @@ namespace Gumo.Playnite
         private const long FolderUploadTargetPartSizeBytes = 8L * 1024 * 1024 * 1024;
         private readonly GumoLibrarySettings settings;
         private readonly CancellationTokenSource startupProbeCancellation = new CancellationTokenSource();
+        private bool localUploadSaveConfigurationCanceled;
 
         public GumoLibraryPlugin(IPlayniteAPI api) : base(api)
         {
@@ -439,6 +440,7 @@ namespace Gumo.Playnite
                     gameName,
                     versionName,
                     null,
+                    null,
                     progressArgs);
                 var imported = ImportCompletedUpload(client, completedJob, new PendingGameUpload
                 {
@@ -455,6 +457,7 @@ namespace Gumo.Playnite
             string gameName,
             string versionName,
             Game metadataSource,
+            LocalUploadSaveConfiguration saveConfiguration,
             GlobalProgressActionArgs progressArgs)
         {
             var cancellationToken = progressArgs.CancelToken;
@@ -546,6 +549,16 @@ namespace Gumo.Playnite
                 if (metadataSource != null)
                 {
                     PushSingleGameMetadataToGumo(client, completedJob, metadataSource, cancellationToken);
+                }
+
+                if (saveConfiguration != null)
+                {
+                    PersistSaveConfigurationAndUploadSnapshot(
+                        client,
+                        completedJob,
+                        metadataSource,
+                        saveConfiguration,
+                        progressArgs);
                 }
 
                 RemovePendingUpload(pending);
@@ -788,6 +801,22 @@ namespace Gumo.Playnite
                 return;
             }
 
+            localUploadSaveConfigurationCanceled = false;
+            var saveConfigurations = new Dictionary<string, LocalUploadSaveConfiguration>(StringComparer.OrdinalIgnoreCase);
+            foreach (var game in uploadableGames)
+            {
+                var saveConfiguration = PromptLocalUploadSaveConfiguration(game);
+                if (localUploadSaveConfigurationCanceled)
+                {
+                    return;
+                }
+
+                if (saveConfiguration != null)
+                {
+                    saveConfigurations[game.GameId] = saveConfiguration;
+                }
+            }
+
             try
             {
                 GumoLibrary library;
@@ -820,6 +849,11 @@ namespace Gumo.Playnite
                                     DefaultGameName = game.Name,
                                     DisplayName = new DirectoryInfo(game.InstallDirectory).Name,
                                 };
+                                if (saveConfigurations.TryGetValue(game.GameId, out var saveConfiguration))
+                                {
+                                    ApplySaveExclusionToGameUpload(source, game, saveConfiguration);
+                                }
+
                                 var versionName = !string.IsNullOrWhiteSpace(game.Version)
                                     ? game.Version.Trim()
                                     : "Imported";
@@ -830,6 +864,7 @@ namespace Gumo.Playnite
                                     game.Name,
                                     versionName,
                                     game,
+                                    saveConfiguration,
                                     progressArgs);
                             }
 
@@ -920,6 +955,204 @@ namespace Gumo.Playnite
             var installed = settings.GetInstalledGame(game.GameId);
             return installed != null &&
                    !string.IsNullOrWhiteSpace(installed.VersionId);
+        }
+
+        private LocalUploadSaveConfiguration PromptLocalUploadSaveConfiguration(Game game)
+        {
+            var selection = ShowOptionListPicker(
+                "Gumo Save Upload",
+                $"Choose how to handle save files for {game.Name} before uploading the game payload.",
+                new[]
+                {
+                    new OptionListPickerItem
+                    {
+                        Id = "configure",
+                        Title = "Configure save folder",
+                        Description = "Exclude configured saves from the game archive and upload them separately.",
+                        Value = "configure",
+                    },
+                    new OptionListPickerItem
+                    {
+                        Id = "skip",
+                        Title = "Skip save upload",
+                        Description = "Upload only the game payload right now.",
+                        Value = "skip",
+                    },
+                    new OptionListPickerItem
+                    {
+                        Id = "cancel",
+                        Title = "Cancel upload",
+                        Description = "Abort the local upload flow.",
+                        Value = "cancel",
+                    },
+                });
+
+            var action = selection?.Value as string;
+            if (string.Equals(action, "cancel", StringComparison.Ordinal))
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            if (!string.Equals(action, "configure", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var temporaryInstalledState = new InstalledGameState
+            {
+                GameId = game.GameId,
+                InstallDirectory = game.InstallDirectory,
+                SaveDirectory = game.InstallDirectory,
+            };
+            var savePathType = PromptSavePathType();
+            if (string.IsNullOrWhiteSpace(savePathType))
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            var selectedPath = PromptSaveDirectory(game, temporaryInstalledState, null, savePathType);
+            if (string.IsNullOrWhiteSpace(selectedPath))
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            if (!Directory.Exists(selectedPath))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"The selected save directory does not exist:{Environment.NewLine}{selectedPath}",
+                    "Gumo");
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            var storedPath = NormalizeConfiguredSavePath(selectedPath, savePathType, game.InstallDirectory);
+            if (string.IsNullOrWhiteSpace(storedPath))
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            var patternInput = PlayniteApi.Dialogs.SelectString(
+                "Optional match pattern. Leave blank to include every file in the selected save folder. Use patterns like '*.sav' or 'SaveData/*.dat'.",
+                "Gumo",
+                string.Empty);
+            if (!patternInput.Result)
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            var saveFilePattern = NormalizeSavePattern(patternInput.SelectedString);
+            var resolvedDirectory = ResolveSavePathFromConfiguration(game.InstallDirectory, storedPath, savePathType);
+            if (string.IsNullOrWhiteSpace(resolvedDirectory) || !Directory.Exists(resolvedDirectory))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"The configured save directory does not exist:{Environment.NewLine}{resolvedDirectory}",
+                    "Gumo");
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            if (string.Equals(Path.GetFullPath(resolvedDirectory), Path.GetFullPath(game.InstallDirectory), StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrWhiteSpace(saveFilePattern))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "When the save folder is the game root, a matching pattern is required so game files are not excluded entirely.",
+                    "Gumo");
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
+            return new LocalUploadSaveConfiguration
+            {
+                SavePath = storedPath,
+                SavePathType = savePathType,
+                SaveFilePattern = saveFilePattern,
+                ResolvedDirectory = resolvedDirectory,
+                SnapshotName = $"Initial save import {DateTime.Now:yyyy-MM-dd HH:mm}",
+            };
+        }
+
+        private void ApplySaveExclusionToGameUpload(
+            UploadSourceSelection source,
+            Game game,
+            LocalUploadSaveConfiguration saveConfiguration)
+        {
+            if (source == null || game == null || saveConfiguration == null || string.IsNullOrWhiteSpace(source.Path))
+            {
+                return;
+            }
+
+            var sourceRoot = Path.GetFullPath(source.Path);
+            var saveRoot = Path.GetFullPath(saveConfiguration.ResolvedDirectory);
+            if (!IsPathInsideOrEqual(saveRoot, sourceRoot))
+            {
+                return;
+            }
+
+            var relativeSaveRoot = MakeRelativePath(sourceRoot, saveRoot);
+            if (string.IsNullOrWhiteSpace(relativeSaveRoot))
+            {
+                source.ExcludeMatchPattern = saveConfiguration.SaveFilePattern;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(saveConfiguration.SaveFilePattern))
+            {
+                source.ExcludedRelativeRoots.Add(relativeSaveRoot);
+                return;
+            }
+
+            source.ExcludeMatchPattern = $"{relativeSaveRoot.TrimEnd('/')}/{saveConfiguration.SaveFilePattern.TrimStart('/', '\\')}";
+        }
+
+        private void PersistSaveConfigurationAndUploadSnapshot(
+            GumoApiClient client,
+            GumoJob completedJob,
+            Game sourceGame,
+            LocalUploadSaveConfiguration saveConfiguration,
+            GlobalProgressActionArgs progressArgs)
+        {
+            var versionId = completedJob.Result?.GameVersionId;
+            if (string.IsNullOrWhiteSpace(versionId))
+            {
+                Logger.Warn($"Completed upload for '{sourceGame?.Name ?? saveConfiguration.ResolvedDirectory}' did not return a game_version_id for save upload.");
+                return;
+            }
+
+            progressArgs.Text = $"Saving save configuration for '{sourceGame?.Name ?? versionId}'";
+            progressArgs.CurrentProgressValue = 85;
+            client.PatchVersionAsync(
+                    versionId,
+                    new GumoPatchVersionRequest
+                    {
+                        SavePath = saveConfiguration.SavePath,
+                        SavePathType = saveConfiguration.SavePathType,
+                        SaveFilePattern = saveConfiguration.SaveFilePattern,
+                    },
+                    progressArgs.CancelToken)
+                .GetAwaiter()
+                .GetResult();
+
+            if (!HasUploadableFiles(saveConfiguration.ResolvedDirectory, saveConfiguration.SaveFilePattern))
+            {
+                Logger.Info($"Skipping initial save upload for '{sourceGame?.Name ?? versionId}' because no matching save files were found.");
+                return;
+            }
+
+            progressArgs.Text = $"Uploading saves for '{sourceGame?.Name ?? versionId}'";
+            progressArgs.CurrentProgressValue = 90;
+            UploadSaveSnapshotForVersion(
+                client,
+                versionId,
+                saveConfiguration.ResolvedDirectory,
+                saveConfiguration.SaveFilePattern,
+                saveConfiguration.SnapshotName,
+                progressArgs,
+                sourceGame?.Name ?? versionId);
         }
 
         private void ConfigureSaveDirectory(Game game)
@@ -1213,23 +1446,33 @@ namespace Gumo.Playnite
                 !string.IsNullOrWhiteSpace(version.SavePath) &&
                 !string.IsNullOrWhiteSpace(version.SavePathType))
             {
-                if (string.Equals(version.SavePathType, "relative", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (string.IsNullOrWhiteSpace(installed?.InstallDirectory))
-                    {
-                        return null;
-                    }
-
-                    var relativePath = version.SavePath
-                        .Replace('/', Path.DirectorySeparatorChar)
-                        .Replace('\\', Path.DirectorySeparatorChar);
-                    return Path.GetFullPath(Path.Combine(installed.InstallDirectory, relativePath));
-                }
-
-                return version.SavePath;
+                return ResolveSavePathFromConfiguration(installed?.InstallDirectory, version.SavePath, version.SavePathType);
             }
 
             return installed?.SaveDirectory;
+        }
+
+        private string ResolveSavePathFromConfiguration(string installDirectory, string savePath, string savePathType)
+        {
+            if (string.IsNullOrWhiteSpace(savePath) || string.IsNullOrWhiteSpace(savePathType))
+            {
+                return null;
+            }
+
+            if (string.Equals(savePathType, "relative", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(installDirectory))
+                {
+                    return null;
+                }
+
+                var relativePath = savePath
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
+                return Path.GetFullPath(Path.Combine(installDirectory, relativePath));
+            }
+
+            return savePath;
         }
 
         private string BuildSaveConfigurationSummary(
@@ -2136,6 +2379,84 @@ namespace Gumo.Playnite
             }
         }
 
+        private void UploadSaveSnapshotForVersion(
+            GumoApiClient client,
+            string versionId,
+            string saveDirectory,
+            string saveFilePattern,
+            string snapshotName,
+            GlobalProgressActionArgs progressArgs,
+            string gameName)
+        {
+            var source = new UploadSourceSelection
+            {
+                Path = saveDirectory,
+                IsDirectory = true,
+                DefaultGameName = snapshotName,
+                DisplayName = new DirectoryInfo(saveDirectory).Name,
+                MatchPattern = saveFilePattern,
+            };
+
+            var prepared = PrepareUploadArtifacts(source, progressArgs.CancelToken);
+            try
+            {
+                var session = client.CreateSaveSnapshotImportSessionAsync(
+                        new GumoCreateSaveSnapshotImportSessionRequest
+                        {
+                            GameVersionId = versionId,
+                            Name = snapshotName,
+                            IdempotencyKey = Guid.NewGuid().ToString("N"),
+                        },
+                        progressArgs.CancelToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                var orderedParts = prepared.Parts.OrderBy(part => part.PartIndex).ToList();
+                for (var index = 0; index < orderedParts.Count; index++)
+                {
+                    progressArgs.CancelToken.ThrowIfCancellationRequested();
+                    var preparedPart = orderedParts[index];
+                    var fileInfo = new FileInfo(preparedPart.UploadPath);
+                    progressArgs.Text = $"Uploading save part {index + 1}/{orderedParts.Count} for {gameName}";
+                    progressArgs.CurrentProgressValue = 92 + (index * 4) / Math.Max(orderedParts.Count, 1);
+
+                    var part = client.CreateImportPartAsync(
+                            session.Id,
+                            new GumoCreateImportPartRequest
+                            {
+                                PartIndex = preparedPart.PartIndex,
+                                File = new GumoUploadFileDescriptor
+                                {
+                                    Filename = fileInfo.Name,
+                                    SizeBytes = fileInfo.Length,
+                                },
+                            },
+                            progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult();
+
+                    if (part.State == "created" || part.State == "abandoned")
+                    {
+                        client.PutImportPartContentAsync(part.Id, preparedPart.UploadPath, progressArgs.CancelToken)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+                }
+
+                progressArgs.Text = $"Finalizing save upload for {gameName}";
+                progressArgs.CurrentProgressValue = 97;
+                var job = client.FinalizeImportSessionAsync(session.Id, progressArgs.CancelToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                WaitForGenericJobCompletion(client, job.Id, $"save snapshot for '{gameName}'", progressArgs.CancelToken, progressArgs);
+            }
+            finally
+            {
+                CleanupPreparedArtifacts(prepared);
+            }
+        }
+
         private List<GumoSaveSnapshot> LoadSaveSnapshotsWithProgress(
             GumoApiClient client,
             string versionId,
@@ -2850,7 +3171,11 @@ namespace Gumo.Playnite
                 };
             }
 
-            var files = EnumerateDirectoryFiles(source.Path, source.MatchPattern);
+            var files = EnumerateDirectoryFiles(
+                source.Path,
+                source.MatchPattern,
+                source.ExcludedRelativeRoots,
+                source.ExcludeMatchPattern);
             if (files.Count == 0)
             {
                 throw new InvalidOperationException(
@@ -2886,8 +3211,17 @@ namespace Gumo.Playnite
             };
         }
 
-        private static List<DirectoryUploadFile> EnumerateDirectoryFiles(string sourceDirectory, string matchPattern)
+        private static List<DirectoryUploadFile> EnumerateDirectoryFiles(
+            string sourceDirectory,
+            string matchPattern,
+            IEnumerable<string> excludedRelativeRoots,
+            string excludeMatchPattern)
         {
+            var excludedRoots = (excludedRelativeRoots ?? Enumerable.Empty<string>())
+                .Where(root => !string.IsNullOrWhiteSpace(root))
+                .Select(root => root.Replace('\\', '/').Trim('/'))
+                .ToList();
+
             return Directory
                 .EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories)
                 .Select(path => new DirectoryUploadFile
@@ -2897,8 +3231,14 @@ namespace Gumo.Playnite
                     SizeBytes = new FileInfo(path).Length,
                 })
                 .Where(file => FileMatchesPattern(file.RelativePath, matchPattern))
+                .Where(file => !IsExcludedFromUpload(file.RelativePath, excludedRoots, excludeMatchPattern))
                 .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        private static bool HasUploadableFiles(string sourceDirectory, string matchPattern)
+        {
+            return EnumerateDirectoryFiles(sourceDirectory, matchPattern, null, null).Count > 0;
         }
 
         private static List<List<DirectoryUploadFile>> PartitionDirectoryFiles(
@@ -2974,6 +3314,40 @@ namespace Gumo.Playnite
                 target,
                 GlobPatternToRegex(normalizedPattern),
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        private static bool IsExcludedFromUpload(
+            string relativePath,
+            IReadOnlyList<string> excludedRelativeRoots,
+            string excludeMatchPattern)
+        {
+            var normalizedPath = relativePath.Replace('\\', '/');
+            if (excludedRelativeRoots != null)
+            {
+                foreach (var root in excludedRelativeRoots)
+                {
+                    if (string.IsNullOrWhiteSpace(root))
+                    {
+                        continue;
+                    }
+
+                    if (string.Equals(normalizedPath, root, StringComparison.OrdinalIgnoreCase) ||
+                        normalizedPath.StartsWith(root + "/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(excludeMatchPattern) &&
+                   FileMatchesPattern(relativePath, excludeMatchPattern);
+        }
+
+        private static bool IsPathInsideOrEqual(string candidatePath, string rootPath)
+        {
+            var candidateFullPath = EnsureTrailingDirectorySeparator(Path.GetFullPath(candidatePath));
+            var rootFullPath = EnsureTrailingDirectorySeparator(Path.GetFullPath(rootPath));
+            return candidateFullPath.StartsWith(rootFullPath, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GlobPatternToRegex(string pattern)
@@ -3087,6 +3461,23 @@ namespace Gumo.Playnite
             public string DisplayName { get; set; }
 
             public string MatchPattern { get; set; }
+
+            public string ExcludeMatchPattern { get; set; }
+
+            public List<string> ExcludedRelativeRoots { get; set; } = new List<string>();
+        }
+
+        private sealed class LocalUploadSaveConfiguration
+        {
+            public string SavePath { get; set; }
+
+            public string SavePathType { get; set; }
+
+            public string SaveFilePattern { get; set; }
+
+            public string ResolvedDirectory { get; set; }
+
+            public string SnapshotName { get; set; }
         }
 
         private sealed class DirectoryUploadFile

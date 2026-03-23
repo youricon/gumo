@@ -15,6 +15,53 @@ Responsibilities:
 - install archived game versions locally
 - restore version-specific save snapshots
 
+## Save Backup Configuration
+
+Gumo stores save-backup configuration per game version on the backend.
+
+From the Playnite game menu, `Configure save backup` lets the user set:
+
+- a save path
+- whether that path is `relative` to the install directory or `absolute`
+- an optional file-matching pattern
+
+If the save path points at the game root, a matching pattern is strongly recommended, and is required during local-game upload so the plugin does not exclude the whole install from the game payload.
+
+### Pattern Format
+
+The matching pattern uses glob syntax, not regex.
+
+- `*` matches any number of characters except `/`
+- `?` matches exactly one character except `/`
+- `**` matches across directories
+- if the pattern contains no `/`, it matches filenames only
+- if the pattern contains `/`, it matches the relative path under the configured save folder
+
+Examples:
+
+- `*.sav`
+- `profile?.json`
+- `SaveData/*.dat`
+- `SaveData/**/*.dat`
+- `**/slot*.bin`
+
+Unsupported regex-style features include groups, alternation, and character classes.
+
+### Local Upload Behavior
+
+When uploading a local Playnite game to Gumo, the plugin now asks how to handle saves before packaging the game payload:
+
+- `Configure save folder`
+  - records the save config on the created Gumo version
+  - excludes those save files from the game archive upload
+  - uploads matching save files as a separate initial save snapshot after the game upload completes
+- `Skip save upload`
+  - uploads only the game payload
+- `Cancel upload`
+  - aborts the local upload flow
+
+If the configured save folder currently has no matching files, the plugin still saves the configuration on the backend and skips the initial save snapshot upload.
+
 ## Layout
 
 - `Gumo/`
@@ -79,6 +126,10 @@ Implemented:
 - latest-version mapping into Playnite metadata
 - basic game-menu action to push edited metadata back to Gumo
 - custom import flow that uploads a local payload file into Gumo
+- backend-backed save backup configuration per version
+- save snapshot backup and restore using configured relative or absolute save paths
+- optional glob-based save file filtering for backup, restore, and local upload exclusion
+- local game upload flow that can split save files into a separate save snapshot upload
 - durable upload/job tracking persisted in plugin settings
 - startup recovery that resumes pending Gumo uploads after Playnite restarts
 
