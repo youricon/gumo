@@ -45,6 +45,65 @@ function Resolve-MSBuildPath {
     throw "MSBuild.exe was not found. Install Visual Studio 2022 or Build Tools with the MSBuild component."
 }
 
+function Get-ProjectPropertyValue {
+    param(
+        [string]$ProjectFile,
+        [string]$PropertyName
+    )
+
+    [xml]$projectXml = Get-Content $ProjectFile
+    foreach ($propertyGroup in $projectXml.Project.PropertyGroup) {
+        $property = $propertyGroup.$PropertyName
+        if ($property -and $property.'#text') {
+            return $property.'#text'.Trim()
+        }
+        if ($property -is [string] -and $property.Trim()) {
+            return $property.Trim()
+        }
+    }
+
+    return $null
+}
+
+function Resolve-BuildOutputDirectory {
+    param(
+        [string]$ProjectFile,
+        [string]$BuildConfiguration,
+        [string]$ModuleName
+    )
+
+    $projectDir = Split-Path -Parent $ProjectFile
+    $baseDir = Join-Path $projectDir "bin\\$BuildConfiguration"
+    $candidates = @()
+
+    if (Test-Path $baseDir) {
+        $candidates += $baseDir
+    }
+
+    $targetFramework = Get-ProjectPropertyValue -ProjectFile $ProjectFile -PropertyName "TargetFramework"
+    if ($targetFramework) {
+        $frameworkDir = Join-Path $baseDir $targetFramework
+        if (Test-Path $frameworkDir) {
+            $candidates = @($frameworkDir) + $candidates
+        }
+    }
+
+    if (Test-Path $baseDir) {
+        $nestedDirs = Get-ChildItem -Path $baseDir -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+        if ($nestedDirs) {
+            $candidates += $nestedDirs
+        }
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-Path (Join-Path $candidate $ModuleName)) {
+            return $candidate
+        }
+    }
+
+    throw "Expected plugin module was not found in build output: $ModuleName"
+}
+
 # Be tolerant of invocations like:
 #   .\scripts\package.ps1 --Configuration Release
 # where PowerShell may bind "Release" into the first positional string parameter.
@@ -55,7 +114,6 @@ if ($ProjectPath -and $ProjectPath -notlike "*.csproj" -and $Configuration -eq "
 
 $projectPath = Resolve-Path (Join-Path $pluginRoot $ProjectPath)
 $projectDir = Split-Path -Parent $projectPath
-$buildDir = Join-Path $projectDir "bin\\$Configuration"
 $outputRoot = Join-Path $pluginRoot $OutputRoot
 $manifestPath = Join-Path $projectDir "extension.yaml"
 
@@ -63,10 +121,6 @@ if (-not $SkipBuild) {
     Write-Host "Building Gumo Playnite plugin ($Configuration)..."
     $msbuildPath = Resolve-MSBuildPath
     & $msbuildPath $projectPath /t:Build /p:Configuration=$Configuration
-}
-
-if (-not (Test-Path $buildDir)) {
-    throw "Expected build output directory was not found: $buildDir"
 }
 
 if (-not (Test-Path $manifestPath)) {
@@ -96,9 +150,7 @@ if (-not $manifest.Id -or -not $manifest.Version -or -not $manifest.Module) {
     throw "extension.yaml is missing one of the required fields: Id, Version, Module"
 }
 
-if (-not (Test-Path (Join-Path $buildDir $manifest.Module))) {
-    throw "Expected plugin module was not found in build output: $($manifest.Module)"
-}
+$buildDir = Resolve-BuildOutputDirectory -ProjectFile $projectPath -BuildConfiguration $Configuration -ModuleName $manifest.Module
 
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
