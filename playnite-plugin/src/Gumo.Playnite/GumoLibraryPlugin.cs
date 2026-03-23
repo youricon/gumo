@@ -1019,10 +1019,10 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var completedJob = WaitForCompletedUpload(client, pending, cancellationToken);
+            var finishedJob = WaitForCompletedUpload(client, pending, cancellationToken);
             RemovePendingUpload(pending);
             CleanupPreparedArtifact(pending);
-            return ImportCompletedUpload(client, completedJob, pending);
+            return ImportCompletedUpload(client, finishedJob, pending);
         }
 
         private async Task<Game> ResumePendingImportSessionAsync(
@@ -1079,10 +1079,10 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var completedJob = WaitForCompletedUpload(client, pending, cancellationToken);
+            var finishedJob = WaitForCompletedUpload(client, pending, cancellationToken);
             RemovePendingUpload(pending);
             CleanupPreparedArtifact(pending);
-            return ImportCompletedUpload(client, completedJob, pending);
+            return ImportCompletedUpload(client, finishedJob, pending);
         }
 
         private GumoJob WaitForCompletedUpload(
