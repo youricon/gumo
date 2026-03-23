@@ -162,7 +162,6 @@ namespace Gumo.Playnite
                 new AutomaticPlayController(args.Game)
                 {
                     Name = "Play",
-                    Type = GenericPlayActionType.File,
                     Path = installed.ExecutablePath,
                     WorkingDir = Path.GetDirectoryName(installed.ExecutablePath),
                 }
@@ -714,12 +713,7 @@ namespace Gumo.Playnite
                     });
 
                     game.InstallDirectory = installDirectory;
-                    InvokeOnInstalled(new GameInstalledEventArgs(
-                        new GameInstallationData
-                        {
-                            GameID = game.Id,
-                            InstallDirectory = installDirectory,
-                        }));
+                    game.IsInstalled = true;
                     progressArgs.CurrentProgressValue = 100;
                 }
                 finally
