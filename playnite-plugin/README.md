@@ -42,7 +42,7 @@ Linux/Nix status:
 
 Windows quickstart:
 
-1. Open `src\Gumo.Playnite\Gumo.Playnite.csproj` in Visual Studio.
+1. Open `Gumo.Playnite.sln` in Visual Studio.
 2. Build `Debug`.
 3. Copy the build output into `%APPDATA%\Playnite\Extensions\Gumo` or run `scripts\install-dev.ps1`.
 4. Start Playnite.

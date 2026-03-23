@@ -50,6 +50,12 @@ namespace Gumo.Playnite
             set => SetValue(ref importPublicGamesOnly, value);
         }
 
+        public bool HasConnectionSettings()
+        {
+            return Uri.TryCreate(GumoServerUrl, UriKind.Absolute, out _) &&
+                   !string.IsNullOrWhiteSpace(ApiToken);
+        }
+
         public void BeginEdit()
         {
             editingServerUrl = GumoServerUrl;

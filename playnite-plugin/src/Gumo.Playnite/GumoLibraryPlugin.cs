@@ -45,12 +45,16 @@ namespace Gumo.Playnite
 
         public override UserControl GetSettingsView(bool firstRunSettings)
         {
-            return new GumoLibrarySettingsView();
+            return new GumoLibrarySettingsView(settings);
         }
 
         public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
         {
             Logger.Info($"Gumo plugin loaded. Server URL: {settings.GumoServerUrl}");
+            if (!settings.HasConnectionSettings())
+            {
+                Logger.Warn("Gumo plugin settings are incomplete. Configure the server URL and API token before using the plugin.");
+            }
         }
     }
 }

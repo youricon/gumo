@@ -4,9 +4,10 @@ namespace Gumo.Playnite
 {
     public partial class GumoLibrarySettingsView : UserControl
     {
-        public GumoLibrarySettingsView()
+        public GumoLibrarySettingsView(GumoLibrarySettings settings)
         {
             InitializeComponent();
+            DataContext = settings;
         }
     }
 }

@@ -7,6 +7,10 @@
     <RootNamespace>Gumo.Playnite</RootNamespace>
     <AssemblyName>Gumo.Playnite</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Authors>Isaac</Authors>
+    <Company>Gumo</Company>
+    <Product>Gumo Playnite Plugin</Product>
+    <Description>Playnite library plugin for Gumo managed game archives.</Description>
   </PropertyGroup>
 
   <ItemGroup>
