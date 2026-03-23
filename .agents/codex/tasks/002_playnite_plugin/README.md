@@ -31,9 +31,9 @@ This directory tracks the Playnite plugin work for Gumo.
 | 02 | Windows Dev Environment | Completed | 01 |
 | 03 | Optional Nix Iteration Tooling | Completed | 01 |
 | 04 | Plugin Scaffold And Configuration | Completed | 01, 02 |
-| 05 | API Client And Auth | In progress | 04 |
-| 06 | Library Sync And Metadata | Not started | 05 |
-| 07 | Uploads Jobs And Recovery | Not started | 05, 06 |
+| 05 | API Client And Auth | Completed | 04 |
+| 06 | Library Sync And Metadata | In progress | 05 |
+| 07 | Uploads Jobs And Recovery | In progress | 05, 06 |
 | 08 | Installation Flow | Not started | 05, 06 |
 | 09 | Save Backup And Restore | Not started | 05, 06 |
 | 10 | Packaging And Release | Not started | 04, 08, 09 |

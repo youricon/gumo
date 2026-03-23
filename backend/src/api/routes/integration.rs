@@ -10,8 +10,9 @@ use crate::api::auth;
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
-    json, GameSummaryResource, InstallManifestResource, JobResource,
-    ListResponse, SaveRestoreManifestResource, SaveSnapshotResource, UploadResource,
+    json, GameSummaryResource, GameVersionResource, InstallManifestResource, JobResource,
+    LibraryResource, ListResponse, SaveRestoreManifestResource, SaveSnapshotResource,
+    UploadResource,
 };
 use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{
@@ -20,8 +21,10 @@ use crate::upload_jobs::{
 
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
+        .route("/libraries", get(list_libraries))
         .route("/games", get(list_games))
         .route("/games/{id}", get(get_game).patch(patch_game))
+        .route("/games/{id}/versions", get(list_versions))
         .route("/versions/{id}", patch(patch_version))
         .route("/versions/{id}/install", get(get_install_manifest))
         .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
@@ -53,6 +56,15 @@ async fn list_games(
     }))
 }
 
+async fn list_libraries(
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<LibraryResource>>, ApiError> {
+    Ok(json(ListResponse {
+        items: playnite::list_libraries(&state),
+        next_cursor: None,
+    }))
+}
+
 async fn get_game(
     Path(id): Path<String>,
     State(state): State<AppState>,
@@ -66,6 +78,17 @@ async fn patch_game(
     Json(payload): Json<PatchGameRequest>,
 ) -> Result<Json<GameSummaryResource>, ApiError> {
     Ok(Json(playnite::patch_game(&state, &id, payload).await?))
+}
+
+async fn list_versions(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<GameVersionResource>>, ApiError> {
+    let items = playnite::list_versions_for_game(&state, &id).await?;
+    Ok(json(ListResponse {
+        items,
+        next_cursor: None,
+    }))
 }
 
 async fn patch_version(

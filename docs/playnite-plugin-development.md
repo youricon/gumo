@@ -209,6 +209,14 @@ Before testing auth-dependent flows:
 4. Generate a new integration token from the `API tokens` panel.
 5. Paste that token into the Playnite plugin settings.
 
+Current identity/linkage rule:
+
+- imported Gumo games use the stable Gumo game ID as Playnite `GameId`
+- version display currently maps the preferred Gumo version into Playnite's `Version` field
+- metadata edits can be pushed back to Gumo through the game menu for Gumo-managed titles
+- custom import currently uploads a local payload file into Gumo as a new game/version pair
+- pending uploads persist `upload_id` and `job_id` locally so the plugin can resume job tracking after restart
+
 ### Daily Iteration
 
 1. Start or verify the Gumo backend is running.

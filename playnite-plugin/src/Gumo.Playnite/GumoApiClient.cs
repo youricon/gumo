@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -48,11 +49,29 @@ namespace Gumo.Playnite
             return response.Items ?? new List<GumoGame>();
         }
 
+        public async Task<List<GumoLibrary>> GetLibrariesAsync(CancellationToken cancellationToken)
+        {
+            var response = await GetAsync<GumoListResponse<GumoLibrary>>(
+                "/api/integrations/playnite/libraries",
+                cancellationToken);
+            return response.Items ?? new List<GumoLibrary>();
+        }
+
         public Task<GumoGame> GetGameAsync(string gameId, CancellationToken cancellationToken)
         {
             return GetAsync<GumoGame>(
                 $"/api/integrations/playnite/games/{Uri.EscapeDataString(gameId)}",
                 cancellationToken);
+        }
+
+        public async Task<List<GumoGameVersion>> GetVersionsAsync(
+            string gameId,
+            CancellationToken cancellationToken)
+        {
+            var response = await GetAsync<GumoListResponse<GumoGameVersion>>(
+                $"/api/integrations/playnite/games/{Uri.EscapeDataString(gameId)}/versions",
+                cancellationToken);
+            return response.Items ?? new List<GumoGameVersion>();
         }
 
         public Task<GumoGameVersion> PatchVersionAsync(
@@ -134,6 +153,42 @@ namespace Gumo.Playnite
         {
             return GetAsync<GumoSaveRestoreManifest>(
                 $"/api/integrations/playnite/save-snapshots/{Uri.EscapeDataString(saveSnapshotId)}/restore",
+                cancellationToken);
+        }
+
+        public Task<GumoUpload> CreateGamePayloadUploadAsync(
+            GumoCreateGamePayloadUploadRequest request,
+            CancellationToken cancellationToken)
+        {
+            return SendJsonAsync<GumoUpload>(
+                HttpMethod.Post,
+                "/api/integrations/playnite/uploads/game-payloads",
+                request,
+                cancellationToken);
+        }
+
+        public async Task<GumoUpload> PutUploadContentAsync(
+            string uploadId,
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            using (var stream = File.OpenRead(filePath))
+            using (var content = new StreamContent(stream))
+            {
+                return await SendAsync<GumoUpload>(
+                    HttpMethod.Put,
+                    $"/api/integrations/playnite/uploads/{Uri.EscapeDataString(uploadId)}/content",
+                    content,
+                    cancellationToken);
+            }
+        }
+
+        public Task<GumoJob> FinalizeUploadAsync(string uploadId, CancellationToken cancellationToken)
+        {
+            return SendAsync<GumoJob>(
+                HttpMethod.Post,
+                $"/api/integrations/playnite/uploads/{Uri.EscapeDataString(uploadId)}/finalize",
+                new StringContent(string.Empty, Encoding.UTF8, "application/json"),
                 cancellationToken);
         }
 

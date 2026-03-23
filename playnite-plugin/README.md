@@ -66,9 +66,14 @@ Implemented:
 - token-authenticated Gumo API client wrapper
 - typed models for games, versions, uploads, jobs, install manifests, and save manifests
 - startup connectivity probe with structured API error logging
-- placeholder library import methods
+- game sync through `GetGames`
+- latest-version mapping into Playnite metadata
+- basic game-menu action to push edited metadata back to Gumo
+- custom import flow that uploads a local payload file into Gumo
+- durable upload/job tracking persisted in plugin settings
+- startup recovery that resumes pending Gumo uploads after Playnite restarts
 
 Not implemented yet:
 
-- import/upload/install/save behavior
+- install/save behavior
 - packaging validation in Playnite

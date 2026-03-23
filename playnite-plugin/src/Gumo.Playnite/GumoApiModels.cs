@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Gumo.Playnite
 {
@@ -85,6 +86,24 @@ namespace Gumo.Playnite
 
         [JsonProperty("updated_at")]
         public string UpdatedAt { get; set; }
+    }
+
+    public sealed class GumoLibrary
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("platform")]
+        public string Platform { get; set; }
+
+        [JsonProperty("visibility")]
+        public string Visibility { get; set; }
+
+        [JsonProperty("enabled")]
+        public bool Enabled { get; set; }
     }
 
     public sealed class GumoGameVersion
@@ -216,7 +235,7 @@ namespace Gumo.Playnite
         public GumoJobProgress Progress { get; set; }
 
         [JsonProperty("result")]
-        public object Result { get; set; }
+        public JToken Result { get; set; }
 
         [JsonProperty("error")]
         public GumoResourceError Error { get; set; }
@@ -367,5 +386,65 @@ namespace Gumo.Playnite
 
         [JsonProperty("parts")]
         public List<GumoArtifactPart> Parts { get; set; } = new List<GumoArtifactPart>();
+    }
+
+    public sealed class GumoUploadFileDescriptor
+    {
+        [JsonProperty("filename")]
+        public string Filename { get; set; }
+
+        [JsonProperty("size_bytes")]
+        public long SizeBytes { get; set; }
+
+        [JsonProperty("checksum")]
+        public string Checksum { get; set; }
+    }
+
+    public sealed class GumoUploadNewGameTarget
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+    }
+
+    public sealed class GumoUploadGameTarget
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("create")]
+        public GumoUploadNewGameTarget Create { get; set; }
+    }
+
+    public sealed class GumoUploadVersionTarget
+    {
+        [JsonProperty("version_name")]
+        public string VersionName { get; set; }
+
+        [JsonProperty("version_code")]
+        public string VersionCode { get; set; }
+
+        [JsonProperty("notes")]
+        public string Notes { get; set; }
+    }
+
+    public sealed class GumoCreateGamePayloadUploadRequest
+    {
+        [JsonProperty("library_id")]
+        public string LibraryId { get; set; }
+
+        [JsonProperty("platform")]
+        public string Platform { get; set; }
+
+        [JsonProperty("game")]
+        public GumoUploadGameTarget Game { get; set; }
+
+        [JsonProperty("version")]
+        public GumoUploadVersionTarget Version { get; set; }
+
+        [JsonProperty("file")]
+        public GumoUploadFileDescriptor File { get; set; }
+
+        [JsonProperty("idempotency_key")]
+        public string IdempotencyKey { get; set; }
     }
 }

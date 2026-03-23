@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using Playnite.SDK;
 using Playnite.SDK.Events;
 using Playnite.SDK.Models;
@@ -32,14 +35,112 @@ namespace Gumo.Playnite
 
         public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args)
         {
-            Logger.Info("Gumo GetGames requested. Library sync is not implemented yet, returning an empty result.");
+            if (!settings.HasConnectionSettings())
+            {
+                Logger.Warn("Gumo GetGames skipped because plugin settings are incomplete.");
+                return Array.Empty<GameMetadata>();
+            }
+
+            try
+            {
+                using (var client = CreateApiClient())
+                {
+                    var cancellationToken = CancellationToken.None;
+                    var games = client.GetGamesAsync(cancellationToken).GetAwaiter().GetResult();
+                    var filteredGames = games
+                        .Where(game => !settings.ImportPublicGamesOnly || string.Equals(game.Visibility, "public", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    var metadata = new List<GameMetadata>(filteredGames.Count);
+                    foreach (var game in filteredGames)
+                    {
+                        var versions = client.GetVersionsAsync(game.Id, cancellationToken).GetAwaiter().GetResult();
+                        metadata.Add(GumoMapper.ToGameMetadata(game, versions));
+                    }
+
+                    Logger.Info($"Gumo GetGames imported {metadata.Count} game metadata records.");
+                    return metadata;
+                }
+            }
+            catch (GumoApiException exception)
+            {
+                Logger.Error(
+                    $"Gumo GetGames failed with {(int)exception.StatusCode} {exception.StatusCode}: {exception.ApiMessage}");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure while importing Gumo games: {exception}");
+            }
+
             return Array.Empty<GameMetadata>();
         }
 
         public override IEnumerable<Game> ImportGames(LibraryImportGamesArgs args)
         {
-            Logger.Info("Gumo customized import requested. Returning an empty placeholder result.");
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before uploading a game.",
+                    "Gumo");
+                return Array.Empty<Game>();
+            }
+
+            try
+            {
+                var importedGame = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs => RunGameUploadImport(progressArgs.CancelToken),
+                    new GlobalProgressOptions("Uploading game archive to Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (importedGame != null)
+                {
+                    return new[] { importedGame };
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Gumo upload import canceled.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to upload game archive to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo upload import: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Unexpected failure during Gumo upload import. See the plugin log for details.",
+                    "Gumo");
+            }
+
             return Array.Empty<Game>();
+        }
+
+        public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
+        {
+            if (args?.Games == null || args.Games.Count == 0)
+            {
+                return Enumerable.Empty<GameMenuItem>();
+            }
+
+            if (!args.Games.Any(IsGumoGame))
+            {
+                return Enumerable.Empty<GameMenuItem>();
+            }
+
+            return new[]
+            {
+                new GameMenuItem
+                {
+                    Description = "Push selected metadata to Gumo",
+                    Action = _ => PushMetadataToGumo(args.Games),
+                }
+            };
         }
 
         public override ISettings GetSettings(bool firstRunSettings)
@@ -62,6 +163,7 @@ namespace Gumo.Playnite
             }
 
             Task.Run(() => ProbeConnectionAsync(startupProbeCancellation.Token));
+            Task.Run(() => ResumePendingUploadsAsync(startupProbeCancellation.Token));
         }
 
         public override void OnApplicationStopped(OnApplicationStoppedEventArgs args)
@@ -104,6 +206,366 @@ namespace Gumo.Playnite
             {
                 Logger.Error($"Unexpected failure while probing the Gumo API: {exception}");
             }
+        }
+
+        private Game RunGameUploadImport(CancellationToken cancellationToken)
+        {
+            var sourceFile = SelectUploadFile();
+            if (string.IsNullOrWhiteSpace(sourceFile))
+            {
+                return null;
+            }
+
+            using (var client = CreateApiClient())
+            {
+                var library = SelectLibrary(client, cancellationToken);
+                if (library == null)
+                {
+                    return null;
+                }
+
+                var gameName = PromptRequiredString(
+                    "Game name",
+                    "Gumo",
+                    Path.GetFileNameWithoutExtension(sourceFile));
+                if (gameName == null)
+                {
+                    return null;
+                }
+
+                var versionName = PromptRequiredString("Version name", "Gumo", "Initial");
+                if (versionName == null)
+                {
+                    return null;
+                }
+
+                var fileInfo = new FileInfo(sourceFile);
+                var pending = new PendingGameUpload
+                {
+                    LibraryId = library.Id,
+                    Platform = library.Platform,
+                    GameName = gameName,
+                    VersionName = versionName,
+                    SourcePath = sourceFile,
+                    FileName = fileInfo.Name,
+                    IdempotencyKey = Guid.NewGuid().ToString("N"),
+                };
+
+                var upload = client.CreateGamePayloadUploadAsync(
+                        new GumoCreateGamePayloadUploadRequest
+                        {
+                            LibraryId = library.Id,
+                            Platform = library.Platform,
+                            Game = new GumoUploadGameTarget
+                            {
+                                Create = new GumoUploadNewGameTarget
+                                {
+                                    Name = gameName,
+                                },
+                            },
+                            Version = new GumoUploadVersionTarget
+                            {
+                                VersionName = versionName,
+                            },
+                            File = new GumoUploadFileDescriptor
+                            {
+                                Filename = fileInfo.Name,
+                                SizeBytes = fileInfo.Length,
+                            },
+                            IdempotencyKey = pending.IdempotencyKey,
+                        },
+                        cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+
+                pending.UploadId = upload.Id;
+                SavePendingUpload(pending);
+
+                if (upload.State == "created" || upload.State == "abandoned")
+                {
+                    client.PutUploadContentAsync(upload.Id, sourceFile, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+
+                var job = client.FinalizeUploadAsync(upload.Id, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                pending.JobId = job.Id;
+                SavePendingUpload(pending);
+
+                var imported = WaitForCompletedUpload(client, pending, cancellationToken);
+                RemovePendingUpload(pending.UploadId);
+                return imported;
+            }
+        }
+
+        private async Task ResumePendingUploadsAsync(CancellationToken cancellationToken)
+        {
+            var pendingUploads = settings.PendingGameUploads?.ToList();
+            if (pendingUploads == null || pendingUploads.Count == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                using (var client = CreateApiClient())
+                {
+                    foreach (var pending in pendingUploads)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var imported = await ResumePendingUploadAsync(client, pending, cancellationToken);
+                            if (imported != null)
+                            {
+                                Logger.Info($"Recovered pending Gumo upload for '{pending.GameName}'.");
+                            }
+                        }
+                        catch (Exception exception)
+                        {
+                            Logger.Error($"Failed to recover pending upload '{pending.GameName}': {exception}");
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Pending Gumo upload recovery canceled during shutdown.");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure while recovering pending Gumo uploads: {exception}");
+            }
+        }
+
+        private void PushMetadataToGumo(IEnumerable<Game> games)
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                Logger.Warn("Skipping metadata push because plugin settings are incomplete.");
+                return;
+            }
+
+            try
+            {
+                using (var client = CreateApiClient())
+                {
+                    var gumoGames = games.Where(IsGumoGame).ToList();
+                    foreach (var game in gumoGames)
+                    {
+                        client.PatchGameAsync(
+                                game.GameId,
+                                GumoMapper.ToPatchGameRequest(game),
+                                CancellationToken.None)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+
+                    Logger.Info($"Pushed metadata for {gumoGames.Count} Gumo game(s).");
+                    PlayniteApi.Dialogs.ShowMessage(
+                        $"Pushed metadata for {gumoGames.Count} Gumo game(s).",
+                        "Gumo");
+                }
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to push metadata to Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure while pushing metadata to Gumo: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Unexpected failure while pushing metadata to Gumo. See the plugin log for details.",
+                    "Gumo");
+            }
+        }
+
+        private bool IsGumoGame(Game game)
+        {
+            return game != null &&
+                   game.PluginId == Id &&
+                   !string.IsNullOrWhiteSpace(game.GameId);
+        }
+
+        private async Task<Game> ResumePendingUploadAsync(
+            GumoApiClient client,
+            PendingGameUpload pending,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(pending.UploadId))
+            {
+                RemovePendingUpload(pending.UploadId);
+                return null;
+            }
+
+            var upload = await client.GetUploadAsync(pending.UploadId, cancellationToken);
+            if ((upload.State == "created" || upload.State == "abandoned") && File.Exists(pending.SourcePath))
+            {
+                upload = await client.PutUploadContentAsync(pending.UploadId, pending.SourcePath, cancellationToken);
+            }
+
+            if (string.IsNullOrWhiteSpace(pending.JobId) &&
+                (upload.State == "uploaded" || upload.State == "queued" || upload.State == "processing"))
+            {
+                var job = await client.FinalizeUploadAsync(pending.UploadId, cancellationToken);
+                pending.JobId = job.Id;
+                SavePendingUpload(pending);
+            }
+
+            if (string.IsNullOrWhiteSpace(pending.JobId))
+            {
+                if (upload.State == "failed" || upload.State == "expired")
+                {
+                    RemovePendingUpload(pending.UploadId);
+                }
+                return null;
+            }
+
+            var imported = WaitForCompletedUpload(client, pending, cancellationToken);
+            RemovePendingUpload(pending.UploadId);
+            return imported;
+        }
+
+        private Game WaitForCompletedUpload(
+            GumoApiClient client,
+            PendingGameUpload pending,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var job = client.GetJobAsync(pending.JobId, cancellationToken).GetAwaiter().GetResult();
+                switch (job.State)
+                {
+                    case "completed":
+                        return ImportCompletedUpload(client, job, pending);
+                    case "failed":
+                        RemovePendingUpload(pending.UploadId);
+                        throw new InvalidOperationException(
+                            $"Gumo upload job failed: {job.Error?.Message ?? "unknown error"}");
+                    case "pending":
+                    case "processing":
+                        Thread.Sleep(1000);
+                        continue;
+                    default:
+                        Thread.Sleep(1000);
+                        continue;
+                }
+            }
+        }
+
+        private Game ImportCompletedUpload(GumoApiClient client, GumoJob job, PendingGameUpload pending)
+        {
+            var gameId = job.Result?["game_id"]?.Value<string>();
+            if (string.IsNullOrWhiteSpace(gameId))
+            {
+                Logger.Warn($"Completed Gumo upload for '{pending.GameName}' without a game_id result.");
+                return null;
+            }
+
+            var game = client.GetGameAsync(gameId, CancellationToken.None).GetAwaiter().GetResult();
+            var versions = client.GetVersionsAsync(gameId, CancellationToken.None).GetAwaiter().GetResult();
+            var metadata = GumoMapper.ToGameMetadata(game, versions);
+            var imported = PlayniteApi.Database.ImportGame(metadata, this);
+
+            Logger.Info($"Imported uploaded Gumo game '{game.Name}' into Playnite.");
+            return imported ?? GumoMapper.ToDatabaseGame(game, versions, Id);
+        }
+
+        private GumoLibrary SelectLibrary(GumoApiClient client, CancellationToken cancellationToken)
+        {
+            var libraries = client.GetLibrariesAsync(cancellationToken)
+                .GetAwaiter()
+                .GetResult()
+                .Where(library => library.Enabled)
+                .ToList();
+
+            if (libraries.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage("No enabled Gumo libraries are available for uploads.", "Gumo");
+                return null;
+            }
+
+            if (libraries.Count == 1)
+            {
+                return libraries[0];
+            }
+
+            var defaultInput = libraries[0].Id;
+            var prompt = string.Join(
+                Environment.NewLine,
+                libraries.Select(library => $"{library.Id} ({library.Name}, {library.Platform})"));
+            var selection = PlayniteApi.Dialogs.SelectString(
+                $"Enter the target Gumo library ID:{Environment.NewLine}{prompt}",
+                "Gumo",
+                defaultInput);
+
+            if (!selection.Result)
+            {
+                return null;
+            }
+
+            var selected = libraries.FirstOrDefault(library =>
+                string.Equals(library.Id, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+            if (selected == null)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unknown Gumo library ID '{selection.SelectedString}'.",
+                    "Gumo");
+            }
+
+            return selected;
+        }
+
+        private string PromptRequiredString(string message, string caption, string defaultValue)
+        {
+            var selection = PlayniteApi.Dialogs.SelectString(message, caption, defaultValue ?? string.Empty);
+            if (!selection.Result)
+            {
+                return null;
+            }
+
+            var value = selection.SelectedString?.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage($"{message} is required.", caption);
+                return null;
+            }
+
+            return value;
+        }
+
+        private string SelectUploadFile()
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "Select game archive payload to upload to Gumo",
+                CheckFileExists = true,
+                Multiselect = false,
+            };
+
+            return dialog.ShowDialog() == true ? dialog.FileName : null;
+        }
+
+        private void SavePendingUpload(PendingGameUpload pending)
+        {
+            var uploads = settings.PendingGameUploads?.ToList() ?? new List<PendingGameUpload>();
+            uploads.RemoveAll(upload => upload.UploadId == pending.UploadId);
+            uploads.Add(pending.Clone());
+            settings.ReplacePendingGameUploads(uploads);
+        }
+
+        private void RemovePendingUpload(string uploadId)
+        {
+            var uploads = settings.PendingGameUploads?.ToList() ?? new List<PendingGameUpload>();
+            uploads.RemoveAll(upload => upload.UploadId == uploadId);
+            settings.ReplacePendingGameUploads(uploads);
         }
     }
 }

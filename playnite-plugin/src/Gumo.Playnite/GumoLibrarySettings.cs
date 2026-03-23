@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Playnite.SDK;
 using Playnite.SDK.Data;
 
@@ -11,10 +12,12 @@ namespace Gumo.Playnite
         private string gumoServerUrl = "http://127.0.0.1:8080";
         private string apiToken = string.Empty;
         private bool importPublicGamesOnly = false;
+        private List<PendingGameUpload> pendingGameUploads = new List<PendingGameUpload>();
 
         private string editingServerUrl;
         private string editingApiToken;
         private bool editingImportPublicGamesOnly;
+        private List<PendingGameUpload> editingPendingGameUploads;
 
         public GumoLibrarySettings()
         {
@@ -29,6 +32,7 @@ namespace Gumo.Playnite
                 GumoServerUrl = savedSettings.GumoServerUrl;
                 ApiToken = savedSettings.ApiToken;
                 ImportPublicGamesOnly = savedSettings.ImportPublicGamesOnly;
+                PendingGameUploads = savedSettings.PendingGameUploads ?? new List<PendingGameUpload>();
             }
         }
 
@@ -50,6 +54,12 @@ namespace Gumo.Playnite
             set => SetValue(ref importPublicGamesOnly, value);
         }
 
+        public List<PendingGameUpload> PendingGameUploads
+        {
+            get => pendingGameUploads;
+            set => SetValue(ref pendingGameUploads, value ?? new List<PendingGameUpload>());
+        }
+
         public bool HasConnectionSettings()
         {
             return Uri.TryCreate(GumoServerUrl, UriKind.Absolute, out _) &&
@@ -66,6 +76,7 @@ namespace Gumo.Playnite
             editingServerUrl = GumoServerUrl;
             editingApiToken = ApiToken;
             editingImportPublicGamesOnly = ImportPublicGamesOnly;
+            editingPendingGameUploads = ClonePendingUploads();
         }
 
         public void CancelEdit()
@@ -73,6 +84,7 @@ namespace Gumo.Playnite
             GumoServerUrl = editingServerUrl;
             ApiToken = editingApiToken;
             ImportPublicGamesOnly = editingImportPublicGamesOnly;
+            PendingGameUploads = editingPendingGameUploads ?? new List<PendingGameUpload>();
         }
 
         public void EndEdit()
@@ -99,6 +111,43 @@ namespace Gumo.Playnite
             }
 
             return errors.Count == 0;
+        }
+
+        public void ReplacePendingGameUploads(IEnumerable<PendingGameUpload> uploads)
+        {
+            PendingGameUploads = uploads?.Select(upload => upload.Clone()).ToList() ?? new List<PendingGameUpload>();
+            plugin?.SavePluginSettings(this);
+        }
+
+        private List<PendingGameUpload> ClonePendingUploads()
+        {
+            return PendingGameUploads?.Select(upload => upload.Clone()).ToList() ?? new List<PendingGameUpload>();
+        }
+    }
+
+    public class PendingGameUpload
+    {
+        public string UploadId { get; set; }
+
+        public string JobId { get; set; }
+
+        public string LibraryId { get; set; }
+
+        public string Platform { get; set; }
+
+        public string GameName { get; set; }
+
+        public string VersionName { get; set; }
+
+        public string SourcePath { get; set; }
+
+        public string FileName { get; set; }
+
+        public string IdempotencyKey { get; set; }
+
+        public PendingGameUpload Clone()
+        {
+            return (PendingGameUpload)MemberwiseClone();
         }
     }
 }

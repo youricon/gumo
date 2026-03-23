@@ -11,8 +11,9 @@ use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
     ArtifactPartResource, GameSummaryResource, GameVersionResource, InstallArtifactResource,
-    InstallGameResource, InstallManifestResource, InstallVersionResource, LinkResource,
-    SaveRestoreManifestResource, SaveSnapshotManifestResource, SaveSnapshotResource,
+    InstallGameResource, InstallManifestResource, InstallVersionResource, LibraryResource,
+    LinkResource, SaveRestoreManifestResource, SaveSnapshotManifestResource,
+    SaveSnapshotResource,
 };
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +60,25 @@ pub struct PatchVersionRequest {
 
 pub async fn list_games(state: &AppState) -> Result<Vec<GameSummaryResource>, ApiError> {
     list_games_filtered(state, None).await
+}
+
+pub fn list_libraries(state: &AppState) -> Vec<LibraryResource> {
+    state
+        .config()
+        .libraries
+        .iter()
+        .filter(|library| library.enabled)
+        .map(|library| LibraryResource {
+            id: format!("library_{}", library.name.to_lowercase().replace(|ch: char| !ch.is_ascii_alphanumeric(), "_")),
+            name: library.name.clone(),
+            platform: library.platform.0.clone(),
+            visibility: match library.visibility {
+                crate::domain::Visibility::Public => "public".to_string(),
+                crate::domain::Visibility::Private => "private".to_string(),
+            },
+            enabled: library.enabled,
+        })
+        .collect()
 }
 
 pub async fn list_games_filtered(

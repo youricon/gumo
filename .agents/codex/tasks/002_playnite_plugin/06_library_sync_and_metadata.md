@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -34,11 +34,14 @@ Sync Gumo-managed games into Playnite and support metadata updates using the Pla
 
 ## Tracking Checklist
 
-- [ ] Game sync flow added
-- [ ] Version mapping added
-- [ ] Metadata patch flow added
-- [ ] Identity/linkage strategy implemented
+- [x] Game sync flow added
+- [x] Version mapping added
+- [x] Metadata patch flow added
+- [x] Identity/linkage strategy implemented
 
 ## Notes
 
 - Follow Playnite field naming and semantics closely.
+- Current linkage strategy: each imported Playnite record uses the stable Gumo game ID as `GameId`, with `PluginId` set to the Gumo plugin ID.
+- Current version mapping: the Playnite `Version` field is populated from the preferred Gumo version for each game, currently biased toward `is_latest`.
+- Current metadata update flow: selected Gumo games can push edited Playnite metadata back to Gumo through the game menu action.
