@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using Playnite.SDK;
 using Playnite.SDK.Events;
 using Playnite.SDK.Models;
@@ -1086,43 +1087,53 @@ namespace Gumo.Playnite
 
         private UploadSourceSelection SelectUploadSource()
         {
-            var selection = PlayniteApi.Dialogs.SelectString(
-                "Enter a local path to a file, archive, or folder to upload",
-                "Gumo",
-                string.Empty);
-            if (!selection.Result || string.IsNullOrWhiteSpace(selection.SelectedString))
+            var picker = new UploadSourcePickerWindow();
+            var result = picker.ShowDialog();
+            if (result != true || picker.Selection == UploadSourcePickerSelection.None)
             {
                 return null;
             }
 
-            var rawPath = selection.SelectedString.Trim().Trim('"');
-            if (Directory.Exists(rawPath))
+            if (picker.Selection == UploadSourcePickerSelection.Folder)
             {
-                var info = new DirectoryInfo(rawPath);
-                return new UploadSourceSelection
+                using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
                 {
-                    Path = rawPath,
-                    IsDirectory = true,
-                    DefaultGameName = info.Name,
-                    DisplayName = info.Name,
-                };
+                    dialog.Description = "Select game folder to upload to Gumo";
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+                    {
+                        return null;
+                    }
+
+                    var info = new DirectoryInfo(dialog.SelectedPath);
+                    return new UploadSourceSelection
+                    {
+                        Path = dialog.SelectedPath,
+                        IsDirectory = true,
+                        DefaultGameName = info.Name,
+                        DisplayName = info.Name,
+                    };
+                }
             }
 
-            if (File.Exists(rawPath))
+            var fileDialog = new OpenFileDialog
             {
-                return new UploadSourceSelection
-                {
-                    Path = rawPath,
-                    IsDirectory = false,
-                    DefaultGameName = Path.GetFileNameWithoutExtension(rawPath),
-                    DisplayName = Path.GetFileName(rawPath),
-                };
+                Title = "Select game file or archive to upload to Gumo",
+                CheckFileExists = true,
+                Multiselect = false,
+            };
+
+            if (fileDialog.ShowDialog() != true || string.IsNullOrWhiteSpace(fileDialog.FileName))
+            {
+                return null;
             }
 
-            PlayniteApi.Dialogs.ShowErrorMessage(
-                $"The path '{rawPath}' does not exist or is not accessible.",
-                "Gumo");
-            return null;
+            return new UploadSourceSelection
+            {
+                Path = fileDialog.FileName,
+                IsDirectory = false,
+                DefaultGameName = Path.GetFileNameWithoutExtension(fileDialog.FileName),
+                DisplayName = Path.GetFileName(fileDialog.FileName),
+            };
         }
 
         private GumoUploadGameTarget ResolveUploadGameTarget(
