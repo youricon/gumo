@@ -1087,8 +1087,21 @@ namespace Gumo.Playnite
 
         private UploadSourceSelection SelectUploadSource()
         {
-            var picker = new UploadSourcePickerWindow();
-            var result = picker.ShowDialog();
+            var pickerWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            {
+                ShowCloseButton = true,
+                ShowMaximizeButton = false,
+                ShowMinimizeButton = false,
+            });
+            pickerWindow.Title = "Gumo Upload Source";
+            pickerWindow.Width = 360;
+            pickerWindow.Height = 170;
+            pickerWindow.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
+            pickerWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
+
+            var picker = new UploadSourcePickerWindow(pickerWindow);
+            pickerWindow.Content = picker;
+            var result = pickerWindow.ShowDialog();
             if (result != true || picker.Selection == UploadSourcePickerSelection.None)
             {
                 return null;

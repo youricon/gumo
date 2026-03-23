@@ -1,12 +1,16 @@
 using System.Windows;
+using System.Windows.Controls;
 
 namespace Gumo.Playnite
 {
-    public partial class UploadSourcePickerWindow : Window
+    public partial class UploadSourcePickerWindow : UserControl
     {
-        public UploadSourcePickerWindow()
+        private readonly Window hostWindow;
+
+        public UploadSourcePickerWindow(Window hostWindow)
         {
             InitializeComponent();
+            this.hostWindow = hostWindow;
         }
 
         public UploadSourcePickerSelection Selection { get; private set; } = UploadSourcePickerSelection.None;
@@ -14,13 +18,19 @@ namespace Gumo.Playnite
         private void OnFileClick(object sender, RoutedEventArgs e)
         {
             Selection = UploadSourcePickerSelection.File;
-            DialogResult = true;
+            hostWindow.DialogResult = true;
         }
 
         private void OnFolderClick(object sender, RoutedEventArgs e)
         {
             Selection = UploadSourcePickerSelection.Folder;
-            DialogResult = true;
+            hostWindow.DialogResult = true;
+        }
+
+        private void OnCancelClick(object sender, RoutedEventArgs e)
+        {
+            Selection = UploadSourcePickerSelection.None;
+            hostWindow.DialogResult = false;
         }
     }
 
