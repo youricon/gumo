@@ -30,6 +30,7 @@ The backend and frontend should remain runnable independently in development.
 The frontend dev server now reads its development settings from `./.local/gumo/config.toml`.
 
 - `server.listen_address` and `server.port` define the backend origin used for `/api` proxying.
+- the same backend origin is also used for `/media` proxying so artwork loads in Vite dev mode
 - `frontend.dev_port` defines the Vite dev server port.
 - `frontend.dev_listen_address` is optional and falls back to `server.listen_address`.
 
