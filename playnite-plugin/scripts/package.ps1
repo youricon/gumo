@@ -136,6 +136,25 @@ function Resolve-BuildOutputDirectory {
     throw "Expected plugin module was not found in build output: $ModuleName"
 }
 
+function Resolve-ExtractedPackageRoot {
+    param(
+        [string]$ExtractedDir
+    )
+
+    if (Test-Path (Join-Path $ExtractedDir "extension.yaml")) {
+        return $ExtractedDir
+    }
+
+    $childDirs = Get-ChildItem -Path $ExtractedDir -Directory -ErrorAction SilentlyContinue
+    foreach ($childDir in $childDirs) {
+        if (Test-Path (Join-Path $childDir.FullName "extension.yaml")) {
+            return $childDir.FullName
+        }
+    }
+
+    throw "Could not find extension.yaml in the extracted Toolbox package."
+}
+
 # Be tolerant of invocations like:
 #   .\scripts\package.ps1 --Configuration Release
 # where PowerShell may bind "Release" into the first positional string parameter.
@@ -191,6 +210,7 @@ $artifactBaseName = "$($manifest.Id)-$safeVersion"
 $stagingDir = Join-Path $outputRoot $artifactBaseName
 $packageRootDir = Join-Path $stagingDir $manifest.Id
 $artifactPath = Join-Path $outputRoot "$artifactBaseName.pext"
+$rebuiltZipPath = Join-Path $outputRoot "$artifactBaseName.rebuilt.zip"
 
 if (Test-Path $stagingDir) {
     Remove-Item -Recurse -Force $stagingDir
@@ -198,6 +218,10 @@ if (Test-Path $stagingDir) {
 
 if (Test-Path $artifactPath) {
     Remove-Item -Force $artifactPath
+}
+
+if (Test-Path $rebuiltZipPath) {
+    Remove-Item -Force $rebuiltZipPath
 }
 
 Get-ChildItem -Path $outputRoot -Filter "$($manifest.Id)*.pext" -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -234,7 +258,22 @@ if ($toolboxArtifacts.Count -gt 1) {
     throw "Toolbox produced multiple .pext artifacts and the script could not choose one automatically."
 }
 
-Move-Item -Path $toolboxArtifacts[0].FullName -Destination $artifactPath -Force
+$toolboxArtifactPath = $toolboxArtifacts[0].FullName
+$toolboxExtractDir = Join-Path $stagingDir "__toolbox_extract"
+if (Test-Path $toolboxExtractDir) {
+    Remove-Item -Recurse -Force $toolboxExtractDir
+}
+
+Expand-Archive -Path $toolboxArtifactPath -DestinationPath $toolboxExtractDir -Force
+$extractedPackageRoot = Resolve-ExtractedPackageRoot -ExtractedDir $toolboxExtractDir
+
+Get-ChildItem -Path $packageRootDir -File | ForEach-Object {
+    Copy-Item -Path $_.FullName -Destination (Join-Path $extractedPackageRoot $_.Name) -Force
+}
+
+Compress-Archive -Path (Join-Path $toolboxExtractDir "*") -DestinationPath $rebuiltZipPath -CompressionLevel Optimal
+Move-Item -Path $rebuiltZipPath -Destination $artifactPath -Force
+Remove-Item -Force $toolboxArtifactPath
 
 $artifactSize = (Get-Item $artifactPath).Length
 
