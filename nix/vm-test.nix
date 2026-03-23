@@ -22,7 +22,7 @@
         libraries = [
           {
             name = "main";
-            root_path = "/var/lib/gumo/storage";
+            root_path = "/var/lib/gumo/library";
             platform = "pc";
             visibility = "public";
             enabled = true;
@@ -48,13 +48,13 @@
 
     machine.succeed("test -f /etc/gumo/gumo.toml")
     machine.succeed("grep -F '/var/lib/gumo/data/gumo.db' /etc/gumo/gumo.toml")
-    machine.succeed("grep -F '/var/lib/gumo/assets' /etc/gumo/gumo.toml")
-    machine.succeed("grep -F '/var/lib/gumo/storage' /etc/gumo/gumo.toml")
+    machine.succeed("grep -F '/var/lib/gumo/cache' /etc/gumo/gumo.toml")
+    machine.succeed("grep -F '/var/lib/gumo/library' /etc/gumo/gumo.toml")
     machine.succeed("grep -F 'admin_mode = \"proxy\"' /etc/gumo/gumo.toml")
 
     machine.succeed("test -d /var/lib/gumo/data")
-    machine.succeed("test -d /var/lib/gumo/assets")
-    machine.succeed("test -d /var/lib/gumo/storage")
+    machine.succeed("test -d /var/lib/gumo/cache")
+    machine.succeed("test -d /var/lib/gumo/library")
     machine.succeed("test -d /var/lib/gumo/tmp")
     machine.succeed("test -f /var/lib/gumo/data/gumo.db")
 
