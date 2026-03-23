@@ -1,0 +1,5 @@
+extension.yaml
+icon.png
+Localization/en_US.xaml
+Gumo.dll
+Newtonsoft.Json.dll

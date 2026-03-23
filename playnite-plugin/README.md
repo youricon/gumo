@@ -18,9 +18,11 @@ Responsibilities:
 ## Layout
 
 - `src/Gumo.Playnite/`
-  - Playnite plugin project
-  - plugin source code
-  - `extension.yaml` copied into build output
+  - legacy SDK-style plugin prototype
+- `Gumo/`
+  - Toolbox-generated Playnite plugin project
+  - current Windows build and packaging target
+  - `BuildInclude.txt` allowlist for Toolbox packaging
 - `scripts/`
   - Windows-oriented helper scripts for packaging and local developer installation
 - `packaging/`
@@ -42,7 +44,7 @@ Linux/Nix status:
 
 Windows quickstart:
 
-1. Open `Gumo.Playnite.sln` in Visual Studio.
+1. Open `Gumo\Gumo.sln` in Visual Studio.
 2. Build `Debug`.
 3. Start Gumo and generate an integration token from the admin UI.
 4. Copy the build output into `%APPDATA%\Playnite\Extensions\Gumo` or run `scripts\install-dev.ps1`.

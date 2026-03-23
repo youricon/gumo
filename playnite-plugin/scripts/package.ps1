@@ -1,7 +1,7 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Configuration = "Release",
-    [string]$ProjectPath = ".\\src\\Gumo.Playnite\\Gumo.Playnite.csproj",
+    [string]$ProjectPath = ".\\Gumo\\Gumo.csproj",
     [string]$OutputRoot = ".\\artifacts",
     [string]$ToolboxPath = "",
     [switch]$SkipBuild
@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pluginRoot = Split-Path -Parent $scriptRoot
-$defaultProjectPath = ".\\src\\Gumo.Playnite\\Gumo.Playnite.csproj"
+$defaultProjectPath = ".\\Gumo\\Gumo.csproj"
 
 function Resolve-MSBuildPath {
     $command = Get-Command msbuild -ErrorAction SilentlyContinue

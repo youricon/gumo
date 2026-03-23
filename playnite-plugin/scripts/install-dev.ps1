@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = "Debug",
-    [string]$ProjectRoot = ".\\src\\Gumo.Playnite",
+    [string]$ProjectRoot = ".\\Gumo",
     [string]$PlayniteExtensionsRoot = "$env:APPDATA\\Playnite\\Extensions\\Gumo"
 )
 

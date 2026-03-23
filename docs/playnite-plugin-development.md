@@ -113,7 +113,7 @@ Use this when setting up a fresh Windows VM.
 5. Install Playnite.
 6. Install 7-Zip.
 7. Clone the repo to `C:\dev\gumo\`.
-8. Open `playnite-plugin\src\Gumo.Playnite\Gumo.Playnite.csproj` in Visual Studio.
+8. Open `playnite-plugin\Gumo\Gumo.sln` in Visual Studio.
 9. Restore and build in `Debug`.
 10. Start Gumo, sign in to `/admin`, and generate a Playnite integration token from the `API tokens` panel.
 11. Copy the build output into the Playnite extensions directory or use the install helper script.
@@ -194,7 +194,7 @@ If that fails:
 
 Expected output area:
 
-- `playnite-plugin\src\Gumo.Playnite\bin\Debug\`
+- `playnite-plugin\Gumo\bin\Debug\`
 
 At minimum, that directory should contain:
 

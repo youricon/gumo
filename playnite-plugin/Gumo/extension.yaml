@@ -1,7 +1,10 @@
-﻿Id: Gumo_fd666191-5124-4c16-8b9b-0a841193822c
-Name: Custom Library Importer
-Author: John Doe
-Version: 1.0
+﻿Id: Gumo_Playnite_Plugin
+Name: Gumo
+Author: gumo
+Version: 0.1
 Module: Gumo.dll
 Type: GameLibrary
 Icon: icon.png
+Links:
+  - Name: Repository
+    Url: https://github.com/JosefNemec/Playnite
