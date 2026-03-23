@@ -34,6 +34,20 @@ Primary development environment:
 - Visual Studio 2022 or Rider
 - Playnite installed locally
 
+Linux/Nix status:
+
+- a minimal Mono/MSBuild attempt was tried
+- the current SDK-style WPF project does not build usefully on NixOS
+- Windows remains the only supported plugin build environment for now
+
+Windows quickstart:
+
+1. Open `src\Gumo.Playnite\Gumo.Playnite.csproj` in Visual Studio.
+2. Build `Debug`.
+3. Copy the build output into `%APPDATA%\Playnite\Extensions\Gumo` or run `scripts\install-dev.ps1`.
+4. Start Playnite.
+5. Confirm the extension loads.
+
 Reference:
 
 - [playnite-plugin-development.md](/home/isaac/workspace/gumo/docs/playnite-plugin-development.md)

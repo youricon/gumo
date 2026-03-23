@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -33,11 +33,14 @@ Try a Linux-side compile workflow only if it provides useful iteration value wit
 
 ## Tracking Checklist
 
-- [ ] Minimal Linux compile path attempted
-- [ ] Result documented
-- [ ] Keep/drop decision made
-- [ ] Main workflow unaffected by failure
+- [x] Minimal Linux compile path attempted
+- [x] Result documented
+- [x] Keep/drop decision made
+- [x] Main workflow unaffected by failure
 
 ## Notes
 
 - Best-effort only. Do not overinvest here.
+- Attempted with `nix shell nixpkgs#mono nixpkgs#msbuild nixpkgs#nuget ... msbuild /t:Restore,Build`.
+- Result: failed at SDK resolution for `Microsoft.NET.Sdk.WindowsDesktop`; no useful compile feedback was gained.
+- Decision: do not add Playnite plugin build tooling to the main flake at this stage. Windows remains the supported environment.

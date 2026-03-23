@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -35,11 +35,13 @@ Make Windows the primary, documented environment for Playnite plugin development
 
 ## Tracking Checklist
 
-- [ ] Toolchain documented
-- [ ] VM workflow documented
-- [ ] Playnite debug workflow documented
-- [ ] Host/VM connectivity documented
+- [x] Toolchain documented
+- [x] VM workflow documented
+- [x] Playnite debug workflow documented
+- [x] Host/VM connectivity documented
 
 ## Notes
 
 - Windows is the authoritative plugin environment.
+- Detailed Windows setup, VM workflow, connectivity checks, install flow, and build/debug commands are documented in `docs/playnite-plugin-development.md`.
+- Plugin-local quickstart is mirrored in `playnite-plugin/README.md`.

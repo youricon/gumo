@@ -58,6 +58,19 @@ What failure looks like:
 
 If that happens, remove plugin build tooling from the flake and do plugin work only on Windows.
 
+Current result for Gumo:
+
+- attempted Linux-side build with `mono`, `msbuild`, and `nuget`
+- build failed immediately on the SDK-style project system
+- `Microsoft.NET.Sdk.WindowsDesktop` could not be resolved in this workflow
+- no useful partial compile feedback was gained
+
+Decision:
+
+- do not add Playnite plugin build tooling to the main Nix flake right now
+- keep plugin work Windows-first
+- revisit Linux-side compilation only if there is a strong reason later
+
 ### 2. Windows Development
 
 This is the primary workflow.
@@ -87,6 +100,25 @@ Optional:
 - PowerShell 7
 - VS Code or Rider, if you prefer them over full Visual Studio
 
+## Windows Quickstart
+
+Use this when setting up a fresh Windows VM.
+
+1. Install Visual Studio 2022 Community.
+2. During installation, enable:
+   - `.NET desktop development`
+   - `Desktop development with C++` is not required
+3. Confirm the `.NET Framework 4.6.2` targeting pack is available.
+4. Install Git.
+5. Install Playnite.
+6. Install 7-Zip.
+7. Clone the repo to `C:\dev\gumo\`.
+8. Open `playnite-plugin\src\Gumo.Playnite\Gumo.Playnite.csproj` in Visual Studio.
+9. Restore and build in `Debug`.
+10. Copy the build output into the Playnite extensions directory or use the install helper script.
+
+If any of those steps fail, fix the Windows toolchain first. Do not debug plugin logic until the project builds and Playnite sees the extension files.
+
 ## Suggested Windows VM Layout
 
 Inside the VM:
@@ -102,6 +134,14 @@ Recommended directories:
 - repo checkout: `C:\dev\gumo\`
 - plugin project: `C:\dev\gumo\playnite-plugin\`
 - local plugin build output: under the project `bin\` tree
+- Playnite extension target: `%APPDATA%\Playnite\Extensions\Gumo`
+
+Suggested VM snapshots:
+
+- clean Windows base
+- Windows with toolchain installed
+- Windows with Playnite installed
+- Windows with repo cloned and plugin building
 
 ## Connecting Windows Playnite To Gumo On NixOS
 
@@ -124,23 +164,49 @@ curl http://HOST_IP:8080/api/health
 
 Do not start plugin debugging until that works.
 
+Also verify:
+
+```powershell
+Test-NetConnection HOST_IP -Port 8080
+```
+
+If that fails:
+
+- check the Gumo bind address
+- check VM networking mode
+- check host firewall
+- check that the backend is actually listening on the host-reachable interface
+
 ## Windows Development Workflow
 
 ### Initial Setup
 
 1. Clone the repo in Windows.
-2. Open the plugin solution or project in Visual Studio.
-3. Restore dependencies.
-4. Build once in `Debug`.
-5. Confirm the built assembly and manifest/package files land where expected.
-6. Install or symlink the plugin into Playnite.
+2. Open the plugin project in Visual Studio.
+3. Set the build configuration to `Debug`.
+4. Restore dependencies.
+5. Build once.
+6. Confirm the built assembly and manifest/package files land where expected.
+7. Install or copy the plugin into Playnite.
+8. Start Playnite and confirm the plugin is visible.
+
+Expected output area:
+
+- `playnite-plugin\src\Gumo.Playnite\bin\Debug\`
+
+At minimum, that directory should contain:
+
+- `Gumo.Playnite.dll`
+- `extension.yaml`
 
 ### Daily Iteration
 
 1. Start or verify the Gumo backend is running.
 2. Open Playnite.
 3. Rebuild the plugin in Visual Studio.
-4. Reload Playnite or restart it if needed.
+4. Copy/install the updated build into the Playnite extensions directory if your workflow requires it.
+5. Reload Playnite or restart it if needed.
+6. Watch Playnite logs and your plugin logs.
 5. Test:
    - authentication
    - listing games from Gumo
@@ -156,6 +222,16 @@ Preferred approach:
 - run Playnite normally
 - attach Visual Studio to the Playnite process
 - use plugin logs aggressively
+
+Typical attach flow:
+
+1. Start Playnite.
+2. In Visual Studio, use `Debug -> Attach to Process`.
+3. Select the Playnite process.
+4. Set breakpoints in the plugin project.
+5. Trigger the plugin action from Playnite.
+
+If the plugin fails before attach is useful, inspect the Playnite logs first.
 
 Debug the flows separately:
 
@@ -173,6 +249,12 @@ Pick one of these approaches:
 ### Option A: Copy on Build
 
 After build, copy the plugin output into the Playnite extensions directory.
+
+Typical extension path:
+
+```powershell
+$env:APPDATA\Playnite\Extensions\Gumo
+```
 
 Pros:
 
@@ -197,6 +279,32 @@ Cons:
 
 This is usually the better development mode if the plugin layout allows it.
 
+For the current scaffold, the simplest path is still copy-based installation until the extension layout is stable.
+
+## Local Windows Commands
+
+From `C:\dev\gumo\playnite-plugin`:
+
+Build with MSBuild:
+
+```powershell
+msbuild .\src\Gumo.Playnite\Gumo.Playnite.csproj /t:Build /p:Configuration=Debug
+```
+
+Install development build into Playnite:
+
+```powershell
+.\scripts\install-dev.ps1 -Configuration Debug
+```
+
+Run the placeholder packaging script:
+
+```powershell
+.\scripts\package.ps1 -Configuration Release
+```
+
+These scripts are intentionally simple right now. They exist to anchor the Windows workflow in-repo and will be expanded as packaging matures.
+
 ## Windows Packaging Workflow
 
 Release packaging should happen on Windows.
@@ -208,6 +316,16 @@ Recommended flow:
 3. Produce the Playnite extension package format expected by Playnite.
 4. Install that packaged artifact into a clean Playnite environment.
 5. Validate the core flows against a real Gumo instance.
+
+Release validation checklist:
+
+- plugin loads in a clean Playnite install
+- Gumo server URL can be configured
+- token auth succeeds
+- games can be fetched
+- install manifest flow works
+- save snapshot flow works
+- no local debug-only assumptions remain
 
 Keep packaging logic in-repo, for example:
 
@@ -261,6 +379,7 @@ Near-term:
 - document Windows as the primary workflow
 - optionally try a Linux compile shell once
 - do not block plugin work on Linux compilation success
+- for the current scaffold, treat Linux-side compilation as unsupported
 
 Long-term:
 
