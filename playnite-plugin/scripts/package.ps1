@@ -158,6 +158,7 @@ $safeVersion = $manifest.Version -replace '[^0-9A-Za-z._-]', '_'
 $artifactBaseName = "$($manifest.Id)-$safeVersion"
 $stagingDir = Join-Path $outputRoot $artifactBaseName
 $artifactPath = Join-Path $outputRoot "$artifactBaseName.pext"
+$zipArtifactPath = Join-Path $outputRoot "$artifactBaseName.zip"
 
 if (Test-Path $stagingDir) {
     Remove-Item -Recurse -Force $stagingDir
@@ -165,6 +166,10 @@ if (Test-Path $stagingDir) {
 
 if (Test-Path $artifactPath) {
     Remove-Item -Force $artifactPath
+}
+
+if (Test-Path $zipArtifactPath) {
+    Remove-Item -Force $zipArtifactPath
 }
 
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
@@ -184,7 +189,8 @@ if (-not (Test-Path (Join-Path $stagingDir "extension.yaml"))) {
     Copy-Item -Path $manifestPath -Destination (Join-Path $stagingDir "extension.yaml") -Force
 }
 
-Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $artifactPath -CompressionLevel Optimal
+Compress-Archive -Path (Join-Path $stagingDir "*") -DestinationPath $zipArtifactPath -CompressionLevel Optimal
+Move-Item -Path $zipArtifactPath -Destination $artifactPath
 
 $artifactSize = (Get-Item $artifactPath).Length
 
