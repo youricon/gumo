@@ -47,3 +47,4 @@ Support game payload uploads and job polling with durable recovery after Playnit
 - Treat interruption handling as a first-class requirement.
 - Current upload scope supports creating new Gumo games from local payload files through the Playnite custom import flow.
 - Pending upload state is persisted in plugin settings using `upload_id`, `job_id`, source file path, and upload metadata so startup recovery can resume the backend state machine.
+- Automatic startup recovery is intentionally non-destructive: it resumes completed/queued job tracking, but it does not automatically re-upload file content for `created`/`abandoned` uploads.

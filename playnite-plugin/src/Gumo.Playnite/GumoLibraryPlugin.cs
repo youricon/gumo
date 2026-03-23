@@ -279,6 +279,8 @@ namespace Gumo.Playnite
                     return null;
                 }
 
+                var gameTarget = ResolveUploadGameTarget(client, gameName, cancellationToken);
+
                 var fileInfo = new FileInfo(sourceFile);
                 var pending = new PendingGameUpload
                 {
@@ -296,13 +298,7 @@ namespace Gumo.Playnite
                         {
                             LibraryId = library.Id,
                             Platform = library.Platform,
-                            Game = new GumoUploadGameTarget
-                            {
-                                Create = new GumoUploadNewGameTarget
-                                {
-                                    Name = gameName,
-                                },
-                            },
+                            Game = gameTarget,
                             Version = new GumoUploadVersionTarget
                             {
                                 VersionName = versionName,
@@ -451,24 +447,53 @@ namespace Gumo.Playnite
 
             try
             {
-                using (var client = CreateApiClient())
-                {
-                    var gumoGames = games.Where(IsGumoGame).ToList();
-                    foreach (var game in gumoGames)
+                var gumoGames = games.Where(IsGumoGame).ToList();
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
                     {
-                        client.PatchGameAsync(
-                                game.GameId,
-                                GumoMapper.ToPatchGameRequest(game),
-                                CancellationToken.None)
-                            .GetAwaiter()
-                            .GetResult();
-                    }
+                        using (var client = CreateApiClient())
+                        {
+                            for (var index = 0; index < gumoGames.Count; index++)
+                            {
+                                progressArgs.CancelToken.ThrowIfCancellationRequested();
+                                var game = gumoGames[index];
+                                progressArgs.Text = $"Pushing metadata for {game.Name}";
+                                progressArgs.CurrentProgressValue = (index * 100) / Math.Max(gumoGames.Count, 1);
+                                client.PatchGameAsync(
+                                        game.GameId,
+                                        GumoMapper.ToPatchGameRequest(game),
+                                        progressArgs.CancelToken)
+                                    .GetAwaiter()
+                                    .GetResult();
+                            }
 
-                    Logger.Info($"Pushed metadata for {gumoGames.Count} Gumo game(s).");
-                    PlayniteApi.Dialogs.ShowMessage(
-                        $"Pushed metadata for {gumoGames.Count} Gumo game(s).",
-                        "Gumo");
+                            progressArgs.CurrentProgressValue = 100;
+                        }
+                    },
+                    new GlobalProgressOptions("Pushing metadata to Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (result.Canceled)
+                {
+                    Logger.Info("Metadata push to Gumo canceled.");
+                    return;
                 }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
+
+                Logger.Info($"Pushed metadata for {gumoGames.Count} Gumo game(s).");
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"Pushed metadata for {gumoGames.Count} Gumo game(s).",
+                    "Gumo");
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info("Metadata push to Gumo canceled.");
             }
             catch (GumoApiException exception)
             {
@@ -481,7 +506,7 @@ namespace Gumo.Playnite
             {
                 Logger.Error($"Unexpected failure while pushing metadata to Gumo: {exception}");
                 PlayniteApi.Dialogs.ShowErrorMessage(
-                    "Unexpected failure while pushing metadata to Gumo. See the plugin log for details.",
+                    $"Unexpected failure while pushing metadata to Gumo: {exception.Message}",
                     "Gumo");
             }
         }
@@ -505,9 +530,26 @@ namespace Gumo.Playnite
             }
 
             var upload = await client.GetUploadAsync(pending.UploadId, cancellationToken);
-            if ((upload.State == "created" || upload.State == "abandoned") && File.Exists(pending.SourcePath))
+            if (upload.State == "completed")
             {
-                upload = await client.PutUploadContentAsync(pending.UploadId, pending.SourcePath, cancellationToken);
+                var completedJob = !string.IsNullOrWhiteSpace(pending.JobId)
+                    ? await client.GetJobAsync(pending.JobId, cancellationToken)
+                    : null;
+                RemovePendingUpload(pending.UploadId);
+                return completedJob != null ? ImportCompletedUpload(client, completedJob, pending) : null;
+            }
+
+            if (upload.State == "failed" || upload.State == "expired")
+            {
+                RemovePendingUpload(pending.UploadId);
+                return null;
+            }
+
+            if (upload.State == "created" || upload.State == "abandoned" || upload.State == "uploading")
+            {
+                Logger.Warn(
+                    $"Pending Gumo upload '{pending.GameName}' requires manual resume from the upload action; automatic re-upload is disabled.");
+                return null;
             }
 
             if (string.IsNullOrWhiteSpace(pending.JobId) &&
@@ -520,10 +562,6 @@ namespace Gumo.Playnite
 
             if (string.IsNullOrWhiteSpace(pending.JobId))
             {
-                if (upload.State == "failed" || upload.State == "expired")
-                {
-                    RemovePendingUpload(pending.UploadId);
-                }
                 return null;
             }
 
@@ -653,6 +691,35 @@ namespace Gumo.Playnite
             };
 
             return dialog.ShowDialog() == true ? dialog.FileName : null;
+        }
+
+        private GumoUploadGameTarget ResolveUploadGameTarget(
+            GumoApiClient client,
+            string gameName,
+            CancellationToken cancellationToken)
+        {
+            var existingGames = client.GetGamesAsync(cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+            var existingMatch = existingGames.FirstOrDefault(game =>
+                string.Equals(game.Name, gameName, StringComparison.OrdinalIgnoreCase));
+
+            if (existingMatch != null)
+            {
+                Logger.Info($"Matched existing Gumo game '{gameName}' to {existingMatch.Id} for version upload.");
+                return new GumoUploadGameTarget
+                {
+                    Id = existingMatch.Id,
+                };
+            }
+
+            return new GumoUploadGameTarget
+            {
+                Create = new GumoUploadNewGameTarget
+                {
+                    Name = gameName,
+                },
+            };
         }
 
         private void SavePendingUpload(PendingGameUpload pending)

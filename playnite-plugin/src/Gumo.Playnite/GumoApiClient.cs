@@ -172,6 +172,9 @@ namespace Gumo.Playnite
             string filePath,
             CancellationToken cancellationToken)
         {
+            // TODO: Replace this buffered upload path with true streaming from disk.
+            // The current ByteArrayContent approach reads the entire archive into memory,
+            // which is acceptable only as a temporary bring-up path for smaller files.
             var bytes = File.ReadAllBytes(filePath);
             using (var content = new ByteArrayContent(bytes))
             {

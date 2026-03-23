@@ -1,4 +1,5 @@
 use axum::body::Bytes;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
@@ -34,7 +35,10 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/save-snapshots/{id}/download", get(download_save_snapshot))
         .route("/uploads", get(list_uploads))
         .route("/uploads/{id}", get(get_upload))
-        .route("/uploads/{id}/content", put(put_upload_content))
+        .route(
+            "/uploads/{id}/content",
+            put(put_upload_content).layer(DefaultBodyLimit::disable()),
+        )
         .route("/uploads/{id}/finalize", post(finalize_upload))
         .route("/uploads/game-payloads", post(create_game_payload_upload))
         .route("/uploads/save-snapshots", post(create_save_upload))

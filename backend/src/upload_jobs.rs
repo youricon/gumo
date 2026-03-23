@@ -285,6 +285,9 @@ pub async fn put_upload_content(
     upload_public_id: &str,
     body: Bytes,
 ) -> Result<UploadResource, ApiError> {
+    // TODO: Replace this buffered request-body path with streamed writes to disk.
+    // The current Bytes extractor materializes the whole upload in memory before we
+    // persist it, which is only acceptable as a temporary path for moderate-size files.
     let upload = get_upload_row(state.db(), upload_public_id).await?;
     validate_upload_state(&upload.state, &["created", "abandoned"])?;
 
