@@ -61,6 +61,15 @@ The example development config lives at `config/gumo.example.toml`.
 
 Copy it into `./.local/gumo/config.toml` before running the backend. The dev init app performs that copy automatically if the config file is absent.
 
+Logging verbosity is also configured there:
+
+```toml
+[logging]
+level = "debug"
+```
+
+Valid practical values are `trace`, `debug`, `info`, `warn`, and `error`. `RUST_LOG` still overrides the config if you set it explicitly.
+
 For local admin auth, `dev-init` now creates `./.local/gumo/secrets/admin-password-hash` automatically if it is missing, using the default development password `admin`.
 
 To replace it with your own password, use either:

@@ -1,7 +1,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware;
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 
 use crate::api::auth::{self, CreateIntegrationTokenRequest, LoginRequest};
@@ -29,6 +29,10 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route(
             "/integration-tokens/{id}/disable",
             post(disable_integration_token),
+        )
+        .route(
+            "/integration-tokens/{id}",
+            delete(delete_integration_token),
         )
         .route("/uploads", get(list_uploads))
         .route("/uploads/{id}", get(get_upload))
@@ -206,4 +210,12 @@ async fn disable_integration_token(
     State(state): State<AppState>,
 ) -> Result<Json<IntegrationTokenResource>, ApiError> {
     Ok(Json(auth::disable_integration_token(state.db(), &id).await?))
+}
+
+async fn delete_integration_token(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, ApiError> {
+    auth::delete_integration_token(state.db(), &id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

@@ -13,10 +13,10 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
     let config_path = parse_config_path(env::args().skip(1))?;
     let config =
         AppConfig::load_from_file(&config_path).with_context(|| "backend startup failed")?;
+    init_tracing(&config);
     let pool = db::connect_and_migrate(&config.storage)
         .await
         .with_context(|| "database initialization failed")?;
@@ -64,8 +64,11 @@ fn parse_config_path(args: impl Iterator<Item = String>) -> Result<PathBuf> {
     Ok(PathBuf::from(env_path))
 }
 
-fn init_tracing() {
+fn init_tracing(config: &AppConfig) {
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("gumo=debug,tower_http=info"));
+        .unwrap_or_else(|_| {
+            let level = config.logging.level.trim();
+            EnvFilter::new(format!("gumo={level},tower_http={level}"))
+        });
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }

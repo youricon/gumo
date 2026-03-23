@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub server: ServerConfig,
     #[serde(default)]
     pub frontend: FrontendConfig,
+    #[serde(default)]
+    pub logging: LoggingConfig,
     pub storage: StorageConfig,
     pub auth: AuthConfig,
     #[serde(default)]
@@ -50,6 +52,9 @@ impl AppConfig {
         }
         if self.frontend.dev_port == 0 {
             errors.push("frontend.dev_port must be greater than 0".to_string());
+        }
+        if self.logging.level.trim().is_empty() {
+            errors.push("logging.level must not be empty".to_string());
         }
 
         validate_path(
@@ -166,6 +171,20 @@ impl Default for FrontendConfig {
         Self {
             dev_listen_address: None,
             dev_port: default_frontend_dev_port(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LoggingConfig {
+    #[serde(default = "default_logging_level")]
+    pub level: String,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: default_logging_level(),
         }
     }
 }
@@ -289,6 +308,10 @@ fn default_split_part_size_bytes() -> u64 {
 
 fn default_frontend_dev_port() -> u16 {
     4173
+}
+
+fn default_logging_level() -> String {
+    "debug".to_string()
 }
 
 fn default_deduplicate_by_checksum() -> bool {

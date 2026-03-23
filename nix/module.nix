@@ -9,6 +9,9 @@ let
       port = 8080;
       trusted_proxies = [ ];
     };
+    logging = {
+      level = "info";
+    };
     storage = {
       database_path = "${cfg.dataDir}/data/gumo.db";
       cache_dir = "${cfg.dataDir}/cache";

@@ -713,6 +713,19 @@ function AdminPage() {
     }
   }
 
+  async function deleteIntegrationToken(tokenId: string) {
+    setAdminError(null);
+    try {
+      await api<void>(`/api/admin/integration-tokens/${tokenId}`, {
+        method: "DELETE",
+      });
+      setIntegrationTokens((items) => items.filter((item) => item.id !== tokenId));
+      setNewPlaintextToken((current) => current);
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Failed to delete integration token");
+    }
+  }
+
   if (sessionLoading) {
     return <section className="page-section"><p className="muted">Checking admin session…</p></section>;
   }
@@ -1056,15 +1069,33 @@ function AdminPage() {
                 <div className="row-meta">
                   <span>{timestampLabel(token.created_at)}</span>
                   {token.enabled ? (
-                    <button
-                      className="text-button"
-                      onClick={() => disableIntegrationToken(token.id)}
-                      type="button"
-                    >
-                      Disable
-                    </button>
+                    <>
+                      <button
+                        className="text-button"
+                        onClick={() => disableIntegrationToken(token.id)}
+                        type="button"
+                      >
+                        Disable
+                      </button>
+                      <button
+                        className="text-button"
+                        onClick={() => deleteIntegrationToken(token.id)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </>
                   ) : (
-                    <span className="pill">disabled</span>
+                    <>
+                      <span className="pill">disabled</span>
+                      <button
+                        className="text-button"
+                        onClick={() => deleteIntegrationToken(token.id)}
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </>
                   )}
                 </div>
               </article>

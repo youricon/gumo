@@ -248,6 +248,23 @@ pub async fn disable_integration_token(
     get_integration_token(pool, token_id).await
 }
 
+pub async fn delete_integration_token(
+    pool: &SqlitePool,
+    token_id: &str,
+) -> Result<(), ApiError> {
+    let result = sqlx::query("DELETE FROM integration_tokens WHERE public_id = ?1")
+        .bind(token_id)
+        .execute(pool)
+        .await
+        .map_err(internal_error)?;
+
+    if result.rows_affected() == 0 {
+        return Err(ApiError::not_found("integration token", token_id));
+    }
+
+    Ok(())
+}
+
 fn current_admin_identity(
     state: &AppState,
     headers: &axum::http::HeaderMap,
