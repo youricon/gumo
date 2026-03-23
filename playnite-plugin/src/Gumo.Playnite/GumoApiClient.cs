@@ -172,8 +172,8 @@ namespace Gumo.Playnite
             string filePath,
             CancellationToken cancellationToken)
         {
-            using (var stream = File.OpenRead(filePath))
-            using (var content = new StreamContent(stream))
+            var bytes = File.ReadAllBytes(filePath);
+            using (var content = new ByteArrayContent(bytes))
             {
                 return await SendAsync<GumoUpload>(
                     HttpMethod.Put,
