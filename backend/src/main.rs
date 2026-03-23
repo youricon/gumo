@@ -3,20 +3,29 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use gumo::config::AppConfig;
+use gumo::db;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let config_path = parse_config_path(env::args().skip(1))?;
     let config =
         AppConfig::load_from_file(&config_path).with_context(|| "backend startup failed")?;
+    let pool = db::connect_and_migrate(&config.storage)
+        .await
+        .with_context(|| "database initialization failed")?;
+    let foreign_keys_enabled = db::foreign_keys_enabled(&pool).await?;
 
     println!("gumo backend scaffold");
     println!("config={}", config_path.display());
     println!(
-        "libraries={} platforms={} playnite_enabled={}",
+        "libraries={} platforms={} playnite_enabled={} foreign_keys={}",
         config.libraries.len(),
         config.platforms.len(),
-        config.integrations.playnite.enabled
+        config.integrations.playnite.enabled,
+        foreign_keys_enabled
     );
+
+    pool.close().await;
 
     Ok(())
 }

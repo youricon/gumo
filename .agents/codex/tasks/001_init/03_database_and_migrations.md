@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -42,14 +42,14 @@ Implement the initial SQLite schema and forward-only SQL migrations.
 
 ## Tracking Checklist
 
-- [ ] Reference migrations created
-- [ ] Domain migrations created
-- [ ] Metadata migrations created
-- [ ] Artifact/save migrations created
-- [ ] Upload/job migrations created
-- [ ] Indexes created
-- [ ] Seed data created
-- [ ] SQLite caveats resolved
+- [x] Reference migrations created
+- [x] Domain migrations created
+- [x] Metadata migrations created
+- [x] Artifact/save migrations created
+- [x] Upload/job migrations created
+- [x] Indexes created
+- [x] Seed data created
+- [x] SQLite caveats resolved
 
 ## Blockers
 
@@ -58,3 +58,5 @@ Implement the initial SQLite schema and forward-only SQL migrations.
 ## Notes
 
 - Keep `jobs.upload_id` as the actual FK if the circular `uploads.job_id` relationship becomes awkward.
+- Implemented with `sqlx` migrations under `backend/migrations/` and a small database bootstrap layer in `backend/src/db.rs`.
+- Chosen uniqueness strategy: keep the nullable SQLite unique index on `(game_id, version_name, version_code)` and rely on application-level duplicate checks when `version_code IS NULL`.

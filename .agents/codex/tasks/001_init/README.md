@@ -26,7 +26,7 @@ This directory tracks the initial implementation plan for Gumo.
 | --- | --- | --- | --- |
 | 01 | Repo Foundation | Completed | - |
 | 02 | Config And Domain | Completed | 01 |
-| 03 | Database And Migrations | Not started | 01, 02 |
+| 03 | Database And Migrations | Completed | 01, 02 |
 | 04 | Backend API Scaffold | Not started | 01, 02, 03 |
 | 05 | Uploads And Jobs | Not started | 03, 04 |
 | 06 | Playnite Integration Contract | Not started | 02, 04, 05 |

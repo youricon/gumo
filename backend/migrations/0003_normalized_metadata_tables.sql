@@ -1,0 +1,39 @@
+CREATE TABLE genres (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE developers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE publishers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE links (
+  id INTEGER PRIMARY KEY,
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL
+);
+
+CREATE TABLE game_genres (
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  genre_id INTEGER NOT NULL REFERENCES genres(id) ON DELETE RESTRICT,
+  PRIMARY KEY (game_id, genre_id)
+);
+
+CREATE TABLE game_developers (
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  developer_id INTEGER NOT NULL REFERENCES developers(id) ON DELETE RESTRICT,
+  PRIMARY KEY (game_id, developer_id)
+);
+
+CREATE TABLE game_publishers (
+  game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+  publisher_id INTEGER NOT NULL REFERENCES publishers(id) ON DELETE RESTRICT,
+  PRIMARY KEY (game_id, publisher_id)
+);
