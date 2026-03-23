@@ -35,6 +35,11 @@ pub struct CreatedIntegrationTokenResource {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct MediaAssetResource {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PlatformResource {
     pub id: String,
     pub enabled: bool,

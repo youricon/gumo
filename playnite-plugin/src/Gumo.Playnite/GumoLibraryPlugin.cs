@@ -690,9 +690,10 @@ namespace Gumo.Playnite
                                 var game = gumoGames[index];
                                 progressArgs.Text = $"Pushing metadata for {game.Name}";
                                 progressArgs.CurrentProgressValue = (index * 100) / Math.Max(gumoGames.Count, 1);
+                                var patchRequest = BuildPatchGameRequest(client, game, progressArgs.CancelToken);
                                 client.PatchGameAsync(
                                         game.GameId,
-                                        GumoMapper.ToPatchGameRequest(game),
+                                        patchRequest,
                                         progressArgs.CancelToken)
                                     .GetAwaiter()
                                     .GetResult();
@@ -865,9 +866,10 @@ namespace Gumo.Playnite
                 return;
             }
 
+            var patchRequest = BuildPatchGameRequest(client, sourceGame, cancellationToken);
             client.PatchGameAsync(
                     gameId,
-                    GumoMapper.ToPatchGameRequest(sourceGame),
+                    patchRequest,
                     cancellationToken)
                 .GetAwaiter()
                 .GetResult();
@@ -886,6 +888,109 @@ namespace Gumo.Playnite
                    !IsGumoGame(game) &&
                    !string.IsNullOrWhiteSpace(game.InstallDirectory) &&
                    Directory.Exists(game.InstallDirectory);
+        }
+
+        private string ResolveGameMediaReference(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var trimmed = value.Trim();
+            if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp ||
+                 uri.Scheme == Uri.UriSchemeHttps ||
+                 uri.Scheme == Uri.UriSchemeFile))
+            {
+                return trimmed;
+            }
+
+            if (Path.IsPathRooted(trimmed))
+            {
+                return trimmed;
+            }
+
+            try
+            {
+                var resolved = PlayniteApi.Database.GetFullFilePath(trimmed);
+                if (!string.IsNullOrWhiteSpace(resolved))
+                {
+                    return resolved;
+                }
+            }
+            catch (Exception exception)
+            {
+                Logger.Warn($"Failed to resolve Playnite media reference '{trimmed}': {exception.Message}");
+            }
+
+            return trimmed;
+        }
+
+        private GumoPatchGameRequest BuildPatchGameRequest(
+            GumoApiClient client,
+            Game game,
+            CancellationToken cancellationToken)
+        {
+            return GumoMapper.ToPatchGameRequest(
+                game,
+                UploadGameMediaReference(client, game.CoverImage, cancellationToken),
+                UploadGameMediaReference(client, game.BackgroundImage, cancellationToken),
+                UploadGameMediaReference(client, game.Icon, cancellationToken));
+        }
+
+        private string UploadGameMediaReference(
+            GumoApiClient client,
+            string value,
+            CancellationToken cancellationToken)
+        {
+            var resolved = ResolveGameMediaReference(value);
+            if (string.IsNullOrWhiteSpace(resolved))
+            {
+                return null;
+            }
+
+            if (resolved.StartsWith("/media/", StringComparison.OrdinalIgnoreCase) ||
+                resolved.StartsWith("/assets/", StringComparison.OrdinalIgnoreCase))
+            {
+                return resolved;
+            }
+
+            if (Uri.TryCreate(resolved, UriKind.Absolute, out var uri))
+            {
+                if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                {
+                    return resolved;
+                }
+
+                if (uri.Scheme == Uri.UriSchemeFile)
+                {
+                    return UploadLocalMediaFile(client, uri.LocalPath, cancellationToken) ?? resolved;
+                }
+            }
+
+            if (Path.IsPathRooted(resolved))
+            {
+                return UploadLocalMediaFile(client, resolved, cancellationToken) ?? resolved;
+            }
+
+            return resolved;
+        }
+
+        private string UploadLocalMediaFile(
+            GumoApiClient client,
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            {
+                return null;
+            }
+
+            return client.UploadMediaAsync(filePath, cancellationToken)
+                .GetAwaiter()
+                .GetResult()
+                .Url;
         }
 
         private void InstallGame(GlobalProgressActionArgs progressArgs, Game game)

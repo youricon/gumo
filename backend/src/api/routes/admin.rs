@@ -18,7 +18,7 @@ use crate::upload_jobs::{self, ListQuery};
 pub fn router(state: AppState) -> Router<AppState> {
     let protected = Router::new()
         .route("/games", get(list_games))
-        .route("/games/{id}", get(get_game).patch(patch_game))
+        .route("/games/{id}", get(get_game).patch(patch_game).delete(delete_game))
         .route("/games/{id}/versions", get(list_versions))
         .route("/versions/{id}", patch(patch_version))
         .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
@@ -118,6 +118,14 @@ async fn patch_game(
     Json(payload): Json<PatchGameRequest>,
 ) -> Result<Json<GameSummaryResource>, ApiError> {
     Ok(Json(playnite::patch_game(&state, &id, payload).await?))
+}
+
+async fn delete_game(
+    Path(id): Path<String>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, ApiError> {
+    playnite::delete_game(&state, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_versions(

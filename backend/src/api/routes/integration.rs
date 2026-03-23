@@ -1,11 +1,16 @@
 use axum::body::Bytes;
 use axum::extract::DefaultBodyLimit;
+use std::path::Path as StdPath;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::Response;
 use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
+use hex::encode as hex_encode;
+use sha2::{Digest, Sha256};
+use tokio::fs;
 
 use crate::api::auth;
 use crate::api::error::ApiError;
@@ -13,7 +18,7 @@ use crate::api::state::AppState;
 use crate::api::types::{
     json, GameSummaryResource, GameVersionResource, ImportSessionResource,
     InstallManifestResource, JobResource, LibraryResource, ListResponse, SaveRestoreManifestResource,
-    SaveSnapshotResource, UploadPartResource, UploadResource,
+    SaveSnapshotResource, UploadPartResource, UploadResource, MediaAssetResource,
 };
 use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{
@@ -25,6 +30,10 @@ use crate::upload_jobs::{
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/libraries", get(list_libraries))
+        .route(
+            "/media",
+            post(upload_media).layer(DefaultBodyLimit::disable()),
+        )
         .route("/games", get(list_games))
         .route("/games/{id}", get(get_game).patch(patch_game))
         .route("/games/{id}/versions", get(list_versions))
@@ -67,6 +76,11 @@ pub fn router(state: AppState) -> Router<AppState> {
         ))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct UploadMediaQuery {
+    filename: String,
+}
+
 async fn list_games(
     State(state): State<AppState>,
 ) -> Result<Json<ListResponse<GameSummaryResource>>, ApiError> {
@@ -86,11 +100,74 @@ async fn list_libraries(
     }))
 }
 
+async fn upload_media(
+    State(state): State<AppState>,
+    Query(query): Query<UploadMediaQuery>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<MediaAssetResource>), ApiError> {
+    if body.is_empty() {
+        return Err(ApiError::bad_request("media upload body must not be empty"));
+    }
+
+    let extension = normalize_image_extension(&query.filename)
+        .ok_or_else(|| ApiError::bad_request("unsupported media filename extension"))?;
+
+    let digest = Sha256::digest(&body);
+    let file_name = format!("{}.{}", hex_encode(digest), extension);
+    let media_dir = state.config().storage.cache_dir.join("media");
+    fs::create_dir_all(&media_dir)
+        .await
+        .map_err(|err| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                format!("failed to create media directory: {err}"),
+            )
+        })?;
+
+    let file_path = media_dir.join(&file_name);
+    if fs::metadata(&file_path).await.is_err() {
+        fs::write(&file_path, &body)
+            .await
+            .map_err(|err| {
+                ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    format!("failed to store media asset: {err}"),
+                )
+            })?;
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        Json(MediaAssetResource {
+            url: format!("/media/{file_name}"),
+        }),
+    ))
+}
+
 async fn get_game(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<GameSummaryResource>, ApiError> {
     Ok(Json(playnite::get_game(&state, &id).await?))
+}
+
+fn normalize_image_extension(filename: &str) -> Option<&'static str> {
+    let ext = StdPath::new(filename)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())?;
+
+    match ext.as_str() {
+        "png" => Some("png"),
+        "jpg" | "jpeg" => Some("jpg"),
+        "webp" => Some("webp"),
+        "bmp" => Some("bmp"),
+        "gif" => Some("gif"),
+        "ico" => Some("ico"),
+        _ => None,
+    }
 }
 
 async fn patch_game(

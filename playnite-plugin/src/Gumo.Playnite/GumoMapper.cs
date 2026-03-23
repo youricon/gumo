@@ -34,21 +34,25 @@ namespace Gumo.Playnite
             };
         }
 
-        public static object ToPatchGameRequest(Game game)
+        public static GumoPatchGameRequest ToPatchGameRequest(
+            Game game,
+            string coverImage,
+            string backgroundImage,
+            string icon)
         {
-            return new
+            return new GumoPatchGameRequest
             {
-                name = game.Name,
-                sorting_name = EmptyToNull(game.SortingName),
-                description = EmptyToNull(game.Description),
-                release_date = SerializeReleaseDate(game.ReleaseDate),
-                genres = ToNames(game.Genres),
-                developers = ToNames(game.Developers),
-                publishers = ToNames(game.Publishers),
-                links = ToPatchLinks(game.Links),
-                cover_image = EmptyToNull(game.CoverImage),
-                background_image = EmptyToNull(game.BackgroundImage),
-                icon = EmptyToNull(game.Icon),
+                Name = game.Name,
+                SortingName = EmptyToNull(game.SortingName),
+                Description = EmptyToNull(game.Description),
+                ReleaseDate = SerializeReleaseDate(game.ReleaseDate),
+                Genres = ToNames(game.Genres),
+                Developers = ToNames(game.Developers),
+                Publishers = ToNames(game.Publishers),
+                Links = ToPatchLinks(game.Links),
+                CoverImage = EmptyToNull(coverImage),
+                BackgroundImage = EmptyToNull(backgroundImage),
+                Icon = EmptyToNull(icon),
             };
         }
 
@@ -174,17 +178,17 @@ namespace Gumo.Playnite
                 .ToList();
         }
 
-        private static List<object> ToPatchLinks(IEnumerable<Link> links)
+        private static List<GumoLink> ToPatchLinks(IEnumerable<Link> links)
         {
             return (links ?? Enumerable.Empty<Link>())
                 .Where(link =>
                     link != null &&
                     !string.IsNullOrWhiteSpace(link.Name) &&
                     !string.IsNullOrWhiteSpace(link.Url))
-                .Select(link => (object)new
+                .Select(link => new GumoLink
                 {
-                    name = link.Name.Trim(),
-                    url = link.Url.Trim(),
+                    Name = link.Name.Trim(),
+                    Url = link.Url.Trim(),
                 })
                 .ToList();
         }

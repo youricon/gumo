@@ -259,6 +259,161 @@ pub async fn patch_game(
     load_game_resource(state.db(), game_id).await
 }
 
+pub async fn delete_game(state: &AppState, game_id: &str) -> Result<(), ApiError> {
+    let game_row_id: i64 = sqlx::query_scalar("SELECT id FROM games WHERE public_id = ?1")
+        .bind(game_id)
+        .fetch_optional(state.db())
+        .await
+        .map_err(internal_error)?
+        .ok_or_else(|| ApiError::not_found("game", game_id))?;
+
+    let mut tx = state.db().begin().await.map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM upload_parts
+        WHERE import_session_id IN (
+          SELECT id FROM import_sessions
+          WHERE game_id = ?1
+             OR game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        )
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM import_sessions
+        WHERE game_id = ?1
+           OR game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM uploads
+        WHERE game_id = ?1
+           OR game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM artifact_parts
+        WHERE version_artifact_id IN (
+          SELECT id FROM version_artifacts
+          WHERE game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        )
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM version_artifacts
+        WHERE game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM save_snapshot_parts
+        WHERE save_snapshot_id IN (SELECT id FROM save_snapshots WHERE game_id = ?1)
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM save_snapshots WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM overrides
+        WHERE game_id = ?1
+           OR game_version_id IN (SELECT id FROM game_versions WHERE game_id = ?1)
+        "#,
+    )
+    .bind(game_row_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM metadata_sources WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM links WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM game_genres WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM game_developers WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM game_publishers WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM game_platforms WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM game_versions WHERE game_id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    sqlx::query("DELETE FROM games WHERE id = ?1")
+        .bind(game_row_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(internal_error)?;
+
+    tx.commit().await.map_err(internal_error)?;
+    Ok(())
+}
+
 pub async fn patch_version(
     state: &AppState,
     version_id: &str,

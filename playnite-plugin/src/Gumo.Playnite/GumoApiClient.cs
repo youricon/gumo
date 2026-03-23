@@ -98,6 +98,23 @@ namespace Gumo.Playnite
                 cancellationToken);
         }
 
+        public async Task<GumoMediaAsset> UploadMediaAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            var bytes = File.ReadAllBytes(filePath);
+            using (var content = new ByteArrayContent(bytes))
+            {
+                content.Headers.ContentType =
+                    new MediaTypeHeaderValue(DetectMediaContentType(filePath));
+                return await SendAsync<GumoMediaAsset>(
+                    HttpMethod.Post,
+                    $"/api/integrations/playnite/media?filename={Uri.EscapeDataString(Path.GetFileName(filePath))}",
+                    content,
+                    cancellationToken);
+            }
+        }
+
         public async Task<List<GumoUpload>> ListUploadsAsync(CancellationToken cancellationToken)
         {
             var response = await GetAsync<GumoListResponse<GumoUpload>>(
@@ -391,6 +408,28 @@ namespace Gumo.Playnite
             }
 
             return trimmed.TrimEnd('/');
+        }
+
+        private static string DetectMediaContentType(string filePath)
+        {
+            switch (Path.GetExtension(filePath)?.ToLowerInvariant())
+            {
+                case ".png":
+                    return "image/png";
+                case ".jpg":
+                case ".jpeg":
+                    return "image/jpeg";
+                case ".webp":
+                    return "image/webp";
+                case ".bmp":
+                    return "image/bmp";
+                case ".gif":
+                    return "image/gif";
+                case ".ico":
+                    return "image/x-icon";
+                default:
+                    return "application/octet-stream";
+            }
         }
 
         private sealed class VoidResponse

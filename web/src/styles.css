@@ -375,6 +375,30 @@ a {
   cursor: default;
 }
 
+.secondary-button {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.85rem 1.2rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+}
+
+.secondary-button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.destructive-button {
+  border-color: rgba(255, 159, 127, 0.35);
+  color: var(--error);
+}
+
+.destructive-button:hover {
+  background: rgba(255, 159, 127, 0.09);
+}
+
 .text-button {
   align-self: flex-start;
   padding: 0;

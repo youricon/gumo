@@ -436,6 +436,7 @@ function AdminPage() {
   const [adminError, setAdminError] = useState<string | null>(null);
   const [savingGame, setSavingGame] = useState(false);
   const [savingVersion, setSavingVersion] = useState(false);
+  const [deletingGame, setDeletingGame] = useState(false);
   const [creatingToken, setCreatingToken] = useState(false);
   const [tokenLabel, setTokenLabel] = useState("");
   const [newPlaintextToken, setNewPlaintextToken] = useState<string | null>(null);
@@ -676,6 +677,42 @@ function AdminPage() {
     }
   }
 
+  async function deleteSelectedGame() {
+    if (!selectedGameId || !selectedGame) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete '${selectedGame.name}' and all of its versions, uploads, and save snapshots?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingGame(true);
+    setAdminError(null);
+    try {
+      await api<void>(`/api/admin/games/${selectedGameId}`, {
+        method: "DELETE",
+      });
+
+      setGames((items) => {
+        const remaining = items.filter((item) => item.id !== selectedGameId);
+        const nextSelectedId = remaining[0]?.id ?? null;
+        setSelectedGameId(nextSelectedId);
+        return remaining;
+      });
+      setSelectedGame(null);
+      setVersions([]);
+      setSelectedVersionId(null);
+      setSaveSnapshots([]);
+    } catch (err) {
+      setAdminError(err instanceof Error ? err.message : "Failed to delete game");
+    } finally {
+      setDeletingGame(false);
+    }
+  }
+
   async function createIntegrationToken(event: FormEvent) {
     event.preventDefault();
     setCreatingToken(true);
@@ -909,6 +946,14 @@ function AdminPage() {
               </div>
               <button className="primary-button" disabled={savingGame} onClick={saveGame} type="button">
                 {savingGame ? "Saving…" : "Save game metadata"}
+              </button>
+              <button
+                className="secondary-button destructive-button"
+                disabled={deletingGame}
+                onClick={deleteSelectedGame}
+                type="button"
+              >
+                {deletingGame ? "Deleting…" : "Delete game"}
               </button>
             </div>
           ) : (

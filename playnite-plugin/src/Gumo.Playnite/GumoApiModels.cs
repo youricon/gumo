@@ -37,6 +37,48 @@ namespace Gumo.Playnite
         public string Url { get; set; }
     }
 
+    public sealed class GumoMediaAsset
+    {
+        [JsonProperty("url")]
+        public string Url { get; set; }
+    }
+
+    public sealed class GumoPatchGameRequest
+    {
+        [JsonProperty("name")]
+        public string Name { get; set; }
+
+        [JsonProperty("sorting_name")]
+        public string SortingName { get; set; }
+
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        [JsonProperty("release_date")]
+        public string ReleaseDate { get; set; }
+
+        [JsonProperty("genres")]
+        public List<string> Genres { get; set; } = new List<string>();
+
+        [JsonProperty("developers")]
+        public List<string> Developers { get; set; } = new List<string>();
+
+        [JsonProperty("publishers")]
+        public List<string> Publishers { get; set; } = new List<string>();
+
+        [JsonProperty("links")]
+        public List<GumoLink> Links { get; set; } = new List<GumoLink>();
+
+        [JsonProperty("cover_image")]
+        public string CoverImage { get; set; }
+
+        [JsonProperty("background_image")]
+        public string BackgroundImage { get; set; }
+
+        [JsonProperty("icon")]
+        public string Icon { get; set; }
+    }
+
     public sealed class GumoGame
     {
         [JsonProperty("id")]
