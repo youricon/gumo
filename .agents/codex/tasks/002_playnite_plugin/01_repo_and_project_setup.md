@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+Completed
 
 ## Goal
 
@@ -34,11 +34,12 @@ Create the monorepo location and project boundaries for the Playnite plugin with
 
 ## Tracking Checklist
 
-- [ ] Plugin directory created
-- [ ] Project layout defined
-- [ ] Plugin-local README added
-- [ ] Boundary with Gumo API documented
+- [x] Plugin directory created
+- [x] Project layout defined
+- [x] Plugin-local README added
+- [x] Boundary with Gumo API documented
 
 ## Notes
 
 - Treat the plugin as a separate client project inside the monorepo.
+- Implemented under `playnite-plugin/` with separate source, packaging, and scripts directories.

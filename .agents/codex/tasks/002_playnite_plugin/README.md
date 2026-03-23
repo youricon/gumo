@@ -27,10 +27,10 @@ This directory tracks the Playnite plugin work for Gumo.
 
 | Task | Title | Status | Depends On |
 | --- | --- | --- | --- |
-| 01 | Repo And Project Setup | Not started | - |
+| 01 | Repo And Project Setup | Completed | - |
 | 02 | Windows Dev Environment | Not started | 01 |
 | 03 | Optional Nix Iteration Tooling | Not started | 01 |
-| 04 | Plugin Scaffold And Configuration | Not started | 01, 02 |
+| 04 | Plugin Scaffold And Configuration | In progress | 01, 02 |
 | 05 | API Client And Auth | Not started | 04 |
 | 06 | Library Sync And Metadata | Not started | 05 |
 | 07 | Uploads Jobs And Recovery | Not started | 05, 06 |

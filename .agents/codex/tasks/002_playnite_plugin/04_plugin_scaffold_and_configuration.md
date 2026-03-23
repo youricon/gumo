@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started
+In progress
 
 ## Goal
 
@@ -36,12 +36,13 @@ Create the Playnite `LibraryPlugin` scaffold and the plugin configuration model.
 
 ## Tracking Checklist
 
-- [ ] LibraryPlugin scaffold created
-- [ ] Manifest/package metadata added
-- [ ] Server URL setting added
-- [ ] API token setting added
-- [ ] Logging baseline added
+- [x] LibraryPlugin scaffold created
+- [x] Manifest/package metadata added
+- [x] Server URL setting added
+- [x] API token setting added
+- [x] Logging baseline added
 
 ## Notes
 
 - Keep the initial scaffold small and observable.
+- Initial scaffold created under `playnite-plugin/src/Gumo.Playnite/`, but Playnite runtime validation on Windows is still pending.
