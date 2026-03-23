@@ -71,6 +71,9 @@ namespace Gumo.Playnite
                 Description = metadata.Description,
                 ReleaseDate = metadata.ReleaseDate,
                 Version = metadata.Version,
+                CoverImage = metadata.CoverImage?.Path,
+                BackgroundImage = metadata.BackgroundImage?.Path,
+                Icon = metadata.Icon?.Path,
                 Links = new ObservableCollection<Link>(metadata.Links ?? new List<Link>()),
             };
         }

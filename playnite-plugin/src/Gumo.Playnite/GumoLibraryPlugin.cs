@@ -867,12 +867,14 @@ namespace Gumo.Playnite
             }
 
             var patchRequest = BuildPatchGameRequest(client, sourceGame, cancellationToken);
-            client.PatchGameAsync(
+            var updatedGame = client.PatchGameAsync(
                     gameId,
                     patchRequest,
                     cancellationToken)
                 .GetAwaiter()
                 .GetResult();
+            Logger.Info(
+                $"Patched Gumo game '{updatedGame.Name}' metadata after local upload. cover_image={updatedGame.CoverImage ?? "<null>"}, icon={updatedGame.Icon ?? "<null>"}");
         }
 
         private bool IsGumoGame(Game game)

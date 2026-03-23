@@ -6,6 +6,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
 use serde::Deserialize;
 use sqlx::{Row, SqlitePool, Transaction};
+use tokio::fs;
 
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
@@ -266,6 +267,7 @@ pub async fn delete_game(state: &AppState, game_id: &str) -> Result<(), ApiError
         .await
         .map_err(internal_error)?
         .ok_or_else(|| ApiError::not_found("game", game_id))?;
+    let managed_paths = list_managed_game_storage_paths(state.db(), game_row_id).await?;
 
     let mut tx = state.db().begin().await.map_err(internal_error)?;
 
@@ -411,6 +413,21 @@ pub async fn delete_game(state: &AppState, game_id: &str) -> Result<(), ApiError
         .map_err(internal_error)?;
 
     tx.commit().await.map_err(internal_error)?;
+
+    for path in managed_paths {
+        match fs::remove_dir_all(&path).await {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    format!("failed to remove managed storage at {}: {err}", path.display()),
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -938,6 +955,34 @@ async fn file_response(path: PathBuf) -> Result<Response, ApiError> {
 
 fn timestamp_to_rfc3339(value: &str) -> String {
     value.replace(' ', "T") + "Z"
+}
+
+async fn list_managed_game_storage_paths(
+    pool: &SqlitePool,
+    game_row_id: i64,
+) -> Result<Vec<PathBuf>, ApiError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT l.root_path, gv.public_id
+        FROM game_versions gv
+        INNER JOIN libraries l ON l.id = gv.library_id
+        WHERE gv.game_id = ?1
+        "#,
+    )
+    .bind(game_row_id)
+    .fetch_all(pool)
+    .await
+    .map_err(internal_error)?;
+
+    let mut paths = Vec::with_capacity(rows.len() * 2);
+    for row in rows {
+        let root_path: String = row.get("root_path");
+        let version_public_id: String = row.get("public_id");
+        let library_root = PathBuf::from(root_path);
+        paths.push(library_root.join("games").join(&version_public_id));
+        paths.push(library_root.join("saves").join(version_public_id));
+    }
+    Ok(paths)
 }
 
 fn internal_error(err: impl std::fmt::Display) -> ApiError {
