@@ -58,11 +58,6 @@ impl AppConfig {
         match self.auth.admin_mode {
             AdminMode::Local => {
                 require_path(
-                    "auth.session_secret_file",
-                    self.auth.session_secret_file.as_ref(),
-                    &mut errors,
-                );
-                require_path(
                     "auth.owner_password_hash_file",
                     self.auth.owner_password_hash_file.as_ref(),
                     &mut errors,
@@ -78,13 +73,6 @@ impl AppConfig {
         }
 
         if self.integrations.playnite.enabled {
-            if self.integrations.playnite.allow_uploads && self.auth.api_tokens_file.is_none() {
-                errors.push(
-                    "auth.api_tokens_file is required when integrations.playnite.allow_uploads is true"
-                        .to_string(),
-                );
-            }
-
             if let Some(default_platform) = &self.integrations.playnite.default_platform {
                 if !self.platforms.iter().any(|platform| &platform.id == default_platform) {
                     errors.push(format!(
@@ -170,8 +158,6 @@ pub struct StorageConfig {
 pub struct AuthConfig {
     pub admin_mode: AdminMode,
     #[serde(default)]
-    pub session_secret_file: Option<PathBuf>,
-    #[serde(default)]
     pub owner_password_hash_file: Option<PathBuf>,
     #[serde(default)]
     pub proxy_user_header: Option<String>,
@@ -179,8 +165,6 @@ pub struct AuthConfig {
     pub proxy_email_header: Option<String>,
     #[serde(default)]
     pub trusted_proxy_headers: Vec<String>,
-    #[serde(default)]
-    pub api_tokens_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -312,7 +296,6 @@ cache_dir = "./cache"
 
 [auth]
 admin_mode = "local"
-session_secret_file = "./secret"
 owner_password_hash_file = "./password"
 
 [integrations.playnite]

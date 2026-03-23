@@ -20,19 +20,6 @@ const ADMIN_SESSION_COOKIE: &str = "gumo_admin_session";
 const ADMIN_SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 12);
 
 #[derive(Debug, Deserialize)]
-struct TokenFile {
-    #[serde(default)]
-    tokens: Vec<TokenEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TokenEntry {
-    token: String,
-    #[serde(default)]
-    enabled: Option<bool>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub password: String,
 }
@@ -49,21 +36,15 @@ pub async fn require_integration_token(
         .and_then(parse_bearer_token)
         .ok_or_else(|| unauthorized("missing bearer token"))?;
 
-    let tokens_path = state
-        .config()
-        .auth
-        .api_tokens_file
-        .clone()
-        .ok_or_else(|| unauthorized("integration token authentication is not configured"))?;
-    let contents = fs::read_to_string(&tokens_path)
-        .map_err(|_| unauthorized("failed to read integration token configuration"))?;
-    let file: TokenFile = toml::from_str(&contents)
-        .map_err(|_| unauthorized("failed to parse integration token configuration"))?;
-
-    let valid = file
-        .tokens
-        .iter()
-        .any(|entry| entry.token == provided && entry.enabled.unwrap_or(true));
+    let provided_hash = hash_secret(provided);
+    let valid: bool = sqlx::query(
+        "SELECT 1 FROM integration_tokens WHERE token_hash = ?1 AND is_enabled = 1 LIMIT 1",
+    )
+    .bind(provided_hash)
+    .fetch_optional(state.db())
+    .await
+    .map_err(|_| unauthorized("failed to validate integration token"))?
+    .is_some();
 
     if !valid {
         return Err(unauthorized("invalid integration token"));
@@ -231,7 +212,7 @@ fn verify_local_password(state: &AppState, password: &str) -> Result<(), ApiErro
         .strip_prefix("sha256:")
         .unwrap_or(expected)
         .trim();
-    let actual = hex_encode(Sha256::digest(password.as_bytes()));
+    let actual = hash_secret(password);
     if actual == expected {
         Ok(())
     } else {
@@ -274,6 +255,10 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
         .strip_prefix("Bearer ")
         .map(str::trim)
         .filter(|v| !v.is_empty())
+}
+
+fn hash_secret(value: &str) -> String {
+    hex_encode(Sha256::digest(value.as_bytes()))
 }
 
 fn unix_now() -> u64 {

@@ -175,9 +175,7 @@ temp_dir = "{}"
 
 [auth]
 admin_mode = "local"
-session_secret_file = "{}/session-secret"
 owner_password_hash_file = "{}/password-hash"
-api_tokens_file = "{}/api-tokens.toml"
 
 [integrations.playnite]
 enabled = true
@@ -199,8 +197,6 @@ enabled = true
             root.join("data/gumo.db").display(),
             root.join("cache").display(),
             root.join("tmp").display(),
-            root.join("secrets").display(),
-            root.join("secrets").display(),
             root.join("secrets").display(),
             root.join("storage").display(),
         );

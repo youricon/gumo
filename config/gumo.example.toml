@@ -11,9 +11,7 @@ deduplicate_by_checksum = true
 
 [auth]
 admin_mode = "local"
-session_secret_file = "./.local/gumo/secrets/session-secret"
 owner_password_hash_file = "./.local/gumo/secrets/admin-password-hash"
-api_tokens_file = "./.local/gumo/secrets/api-tokens.toml"
 trusted_proxy_headers = []
 
 [integrations.playnite]

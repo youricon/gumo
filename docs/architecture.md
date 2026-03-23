@@ -2574,12 +2574,10 @@ Purpose:
 Fields:
 
 - `admin_mode`
-- `session_secret_file` optional
 - `owner_password_hash_file` optional
 - `proxy_user_header` optional
 - `proxy_email_header` optional
 - `trusted_proxy_headers` optional
-- `api_tokens_file` optional
 
 The public catalog should not require auth by default.
 
@@ -2592,6 +2590,7 @@ Important rules:
 - session cookies are only for the admin UI
 - API tokens are for Playnite and future automation
 - token auth should not depend on interactive login state
+- integration tokens should be stored in the database, not in config files
 
 ### `integrations`
 
@@ -2666,7 +2665,6 @@ deduplicate_by_checksum = true
 
 [auth]
 admin_mode = "local"
-session_secret_file = "./.local/gumo/secrets/session-secret"
 owner_password_hash_file = "./.local/gumo/secrets/admin-password-hash"
 
 [integrations.playnite]

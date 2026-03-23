@@ -45,6 +45,20 @@ The example development config lives at `config/gumo.example.toml`.
 
 Copy it into `./.local/gumo/config.toml` before running the backend. The dev init app performs that copy automatically if the config file is absent.
 
+For local admin auth, create the password hash file expected by `auth.owner_password_hash_file`.
+
+Playnite integration tokens are stored in SQLite, not in config files. Until there is an admin UI for token management, you can insert a development token manually after the backend has created the database.
+
+Example:
+
+```bash
+token="dev-playnite-token"
+hash="$(printf '%s' "$token" | sha256sum | cut -d' ' -f1)"
+sqlite3 ./.local/gumo/data/gumo.db \
+  "INSERT INTO integration_tokens (public_id, label, token_hash, is_enabled, created_at, updated_at)
+   VALUES ('token_dev_playnite', 'dev-playnite', '$hash', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
+```
+
 ## Cache Directory
 
 `storage.cache_dir` is reserved for local cached/generated runtime files such as downloaded artwork, thumbnails, image derivatives, and future metadata cache files.
