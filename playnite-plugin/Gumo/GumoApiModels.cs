@@ -1,627 +1,670 @@
 using System.Collections.Generic;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Runtime.Serialization;
 
 namespace Gumo.Playnite
 {
+    [DataContract]
+    public sealed class GumoJobResult
+    {
+        [DataMember(Name = "game_id")]
+        public string GameId { get; set; }
+
+        [DataMember(Name = "game_version_id")]
+        public string GameVersionId { get; set; }
+
+        [DataMember(Name = "save_snapshot_id")]
+        public string SaveSnapshotId { get; set; }
+    }
+
+    [DataContract]
     public sealed class GumoListResponse<T>
     {
-        [JsonProperty("items")]
+        [DataMember(Name = "items")]
         public List<T> Items { get; set; } = new List<T>();
 
-        [JsonProperty("next_cursor")]
+        [DataMember(Name = "next_cursor")]
         public string NextCursor { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoApiErrorEnvelope
     {
-        [JsonProperty("error")]
+        [DataMember(Name = "error")]
         public GumoApiErrorBody Error { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoApiErrorBody
     {
-        [JsonProperty("code")]
+        [DataMember(Name = "code")]
         public string Code { get; set; }
 
-        [JsonProperty("message")]
+        [DataMember(Name = "message")]
         public string Message { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoLink
     {
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("url")]
+        [DataMember(Name = "url")]
         public string Url { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoMediaAsset
     {
-        [JsonProperty("url")]
+        [DataMember(Name = "url")]
         public string Url { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoPatchGameRequest
     {
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("sorting_name")]
+        [DataMember(Name = "sorting_name")]
         public string SortingName { get; set; }
 
-        [JsonProperty("description")]
+        [DataMember(Name = "description")]
         public string Description { get; set; }
 
-        [JsonProperty("release_date")]
+        [DataMember(Name = "release_date")]
         public string ReleaseDate { get; set; }
 
-        [JsonProperty("genres")]
+        [DataMember(Name = "genres")]
         public List<string> Genres { get; set; } = new List<string>();
 
-        [JsonProperty("developers")]
+        [DataMember(Name = "developers")]
         public List<string> Developers { get; set; } = new List<string>();
 
-        [JsonProperty("publishers")]
+        [DataMember(Name = "publishers")]
         public List<string> Publishers { get; set; } = new List<string>();
 
-        [JsonProperty("links")]
+        [DataMember(Name = "links")]
         public List<GumoLink> Links { get; set; } = new List<GumoLink>();
 
-        [JsonProperty("cover_image")]
+        [DataMember(Name = "cover_image")]
         public string CoverImage { get; set; }
 
-        [JsonProperty("background_image")]
+        [DataMember(Name = "background_image")]
         public string BackgroundImage { get; set; }
 
-        [JsonProperty("icon")]
+        [DataMember(Name = "icon")]
         public string Icon { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoGame
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("sorting_name")]
+        [DataMember(Name = "sorting_name")]
         public string SortingName { get; set; }
 
-        [JsonProperty("platforms")]
+        [DataMember(Name = "platforms")]
         public List<string> Platforms { get; set; } = new List<string>();
 
-        [JsonProperty("description")]
+        [DataMember(Name = "description")]
         public string Description { get; set; }
 
-        [JsonProperty("release_date")]
+        [DataMember(Name = "release_date")]
         public string ReleaseDate { get; set; }
 
-        [JsonProperty("genres")]
+        [DataMember(Name = "genres")]
         public List<string> Genres { get; set; } = new List<string>();
 
-        [JsonProperty("developers")]
+        [DataMember(Name = "developers")]
         public List<string> Developers { get; set; } = new List<string>();
 
-        [JsonProperty("publishers")]
+        [DataMember(Name = "publishers")]
         public List<string> Publishers { get; set; } = new List<string>();
 
-        [JsonProperty("links")]
+        [DataMember(Name = "links")]
         public List<GumoLink> Links { get; set; } = new List<GumoLink>();
 
-        [JsonProperty("visibility")]
+        [DataMember(Name = "visibility")]
         public string Visibility { get; set; }
 
-        [JsonProperty("cover_image")]
+        [DataMember(Name = "cover_image")]
         public string CoverImage { get; set; }
 
-        [JsonProperty("background_image")]
+        [DataMember(Name = "background_image")]
         public string BackgroundImage { get; set; }
 
-        [JsonProperty("icon")]
+        [DataMember(Name = "icon")]
         public string Icon { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoLibrary
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("platform")]
+        [DataMember(Name = "platform")]
         public string Platform { get; set; }
 
-        [JsonProperty("visibility")]
+        [DataMember(Name = "visibility")]
         public string Visibility { get; set; }
 
-        [JsonProperty("enabled")]
+        [DataMember(Name = "enabled")]
         public bool Enabled { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoGameVersion
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("version_name")]
+        [DataMember(Name = "version_name")]
         public string VersionName { get; set; }
 
-        [JsonProperty("version_code")]
+        [DataMember(Name = "version_code")]
         public string VersionCode { get; set; }
 
-        [JsonProperty("original_source_name")]
+        [DataMember(Name = "original_source_name")]
         public string OriginalSourceName { get; set; }
 
-        [JsonProperty("release_date")]
+        [DataMember(Name = "release_date")]
         public string ReleaseDate { get; set; }
 
-        [JsonProperty("is_latest")]
+        [DataMember(Name = "is_latest")]
         public bool IsLatest { get; set; }
 
-        [JsonProperty("notes")]
+        [DataMember(Name = "notes")]
         public string Notes { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoResourceError
     {
-        [JsonProperty("code")]
+        [DataMember(Name = "code")]
         public string Code { get; set; }
 
-        [JsonProperty("message")]
+        [DataMember(Name = "message")]
         public string Message { get; set; }
 
-        [JsonProperty("retryable")]
+        [DataMember(Name = "retryable")]
         public bool? Retryable { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoUpload
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("kind")]
+        [DataMember(Name = "kind")]
         public string Kind { get; set; }
 
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("platform")]
+        [DataMember(Name = "platform")]
         public string Platform { get; set; }
 
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("state")]
+        [DataMember(Name = "state")]
         public string State { get; set; }
 
-        [JsonProperty("filename")]
+        [DataMember(Name = "filename")]
         public string Filename { get; set; }
 
-        [JsonProperty("declared_size_bytes")]
+        [DataMember(Name = "declared_size_bytes")]
         public long DeclaredSizeBytes { get; set; }
 
-        [JsonProperty("received_size_bytes")]
+        [DataMember(Name = "received_size_bytes")]
         public long ReceivedSizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
 
-        [JsonProperty("job_id")]
+        [DataMember(Name = "job_id")]
         public string JobId { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
 
-        [JsonProperty("expires_at")]
+        [DataMember(Name = "expires_at")]
         public string ExpiresAt { get; set; }
 
-        [JsonProperty("error")]
+        [DataMember(Name = "error")]
         public GumoResourceError Error { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoImportSession
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("kind")]
+        [DataMember(Name = "kind")]
         public string Kind { get; set; }
 
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("platform")]
+        [DataMember(Name = "platform")]
         public string Platform { get; set; }
 
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("state")]
+        [DataMember(Name = "state")]
         public string State { get; set; }
 
-        [JsonProperty("part_count")]
+        [DataMember(Name = "part_count")]
         public int PartCount { get; set; }
 
-        [JsonProperty("uploaded_part_count")]
+        [DataMember(Name = "uploaded_part_count")]
         public int UploadedPartCount { get; set; }
 
-        [JsonProperty("declared_size_bytes")]
+        [DataMember(Name = "declared_size_bytes")]
         public long DeclaredSizeBytes { get; set; }
 
-        [JsonProperty("received_size_bytes")]
+        [DataMember(Name = "received_size_bytes")]
         public long ReceivedSizeBytes { get; set; }
 
-        [JsonProperty("job_id")]
+        [DataMember(Name = "job_id")]
         public string JobId { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
 
-        [JsonProperty("expires_at")]
+        [DataMember(Name = "expires_at")]
         public string ExpiresAt { get; set; }
 
-        [JsonProperty("error")]
+        [DataMember(Name = "error")]
         public GumoResourceError Error { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoUploadPart
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("import_session_id")]
+        [DataMember(Name = "import_session_id")]
         public string ImportSessionId { get; set; }
 
-        [JsonProperty("part_index")]
+        [DataMember(Name = "part_index")]
         public int PartIndex { get; set; }
 
-        [JsonProperty("state")]
+        [DataMember(Name = "state")]
         public string State { get; set; }
 
-        [JsonProperty("filename")]
+        [DataMember(Name = "filename")]
         public string Filename { get; set; }
 
-        [JsonProperty("declared_size_bytes")]
+        [DataMember(Name = "declared_size_bytes")]
         public long DeclaredSizeBytes { get; set; }
 
-        [JsonProperty("received_size_bytes")]
+        [DataMember(Name = "received_size_bytes")]
         public long ReceivedSizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
 
-        [JsonProperty("error")]
+        [DataMember(Name = "error")]
         public GumoResourceError Error { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoJobProgress
     {
-        [JsonProperty("phase")]
+        [DataMember(Name = "phase")]
         public string Phase { get; set; }
 
-        [JsonProperty("percent")]
+        [DataMember(Name = "percent")]
         public int Percent { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoJob
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("kind")]
+        [DataMember(Name = "kind")]
         public string Kind { get; set; }
 
-        [JsonProperty("state")]
+        [DataMember(Name = "state")]
         public string State { get; set; }
 
-        [JsonProperty("upload_id")]
+        [DataMember(Name = "upload_id")]
         public string UploadId { get; set; }
 
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("progress")]
+        [DataMember(Name = "progress")]
         public GumoJobProgress Progress { get; set; }
 
-        [JsonProperty("result")]
-        public JToken Result { get; set; }
+        [DataMember(Name = "result")]
+        public GumoJobResult Result { get; set; }
 
-        [JsonProperty("error")]
+        [DataMember(Name = "error")]
         public GumoResourceError Error { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [DataMember(Name = "updated_at")]
         public string UpdatedAt { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoArtifactPart
     {
-        [JsonProperty("part_index")]
+        [DataMember(Name = "part_index")]
         public int PartIndex { get; set; }
 
-        [JsonProperty("download_url")]
+        [DataMember(Name = "download_url")]
         public string DownloadUrl { get; set; }
 
-        [JsonProperty("size_bytes")]
+        [DataMember(Name = "size_bytes")]
         public long SizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoInstallGame
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("platforms")]
+        [DataMember(Name = "platforms")]
         public List<string> Platforms { get; set; } = new List<string>();
     }
 
+    [DataContract]
     public sealed class GumoInstallVersion
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("version_name")]
+        [DataMember(Name = "version_name")]
         public string VersionName { get; set; }
 
-        [JsonProperty("is_latest")]
+        [DataMember(Name = "is_latest")]
         public bool IsLatest { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoInstallArtifact
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("archive_type")]
+        [DataMember(Name = "archive_type")]
         public string ArchiveType { get; set; }
 
-        [JsonProperty("size_bytes")]
+        [DataMember(Name = "size_bytes")]
         public long SizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
 
-        [JsonProperty("parts")]
+        [DataMember(Name = "parts")]
         public List<GumoArtifactPart> Parts { get; set; } = new List<GumoArtifactPart>();
     }
 
+    [DataContract]
     public sealed class GumoInstallManifest
     {
-        [JsonProperty("game")]
+        [DataMember(Name = "game")]
         public GumoInstallGame Game { get; set; }
 
-        [JsonProperty("version")]
+        [DataMember(Name = "version")]
         public GumoInstallVersion Version { get; set; }
 
-        [JsonProperty("artifact")]
+        [DataMember(Name = "artifact")]
         public GumoInstallArtifact Artifact { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoSaveSnapshot
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("captured_at")]
+        [DataMember(Name = "captured_at")]
         public string CapturedAt { get; set; }
 
-        [JsonProperty("archive_type")]
+        [DataMember(Name = "archive_type")]
         public string ArchiveType { get; set; }
 
-        [JsonProperty("size_bytes")]
+        [DataMember(Name = "size_bytes")]
         public long SizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
 
-        [JsonProperty("notes")]
+        [DataMember(Name = "notes")]
         public string Notes { get; set; }
 
-        [JsonProperty("created_at")]
+        [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoSaveSnapshotManifest
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("captured_at")]
+        [DataMember(Name = "captured_at")]
         public string CapturedAt { get; set; }
 
-        [JsonProperty("archive_type")]
+        [DataMember(Name = "archive_type")]
         public string ArchiveType { get; set; }
 
-        [JsonProperty("size_bytes")]
+        [DataMember(Name = "size_bytes")]
         public long SizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoSaveRestoreManifest
     {
-        [JsonProperty("game_id")]
+        [DataMember(Name = "game_id")]
         public string GameId { get; set; }
 
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("save_snapshot")]
+        [DataMember(Name = "save_snapshot")]
         public GumoSaveSnapshotManifest SaveSnapshot { get; set; }
 
-        [JsonProperty("parts")]
+        [DataMember(Name = "parts")]
         public List<GumoArtifactPart> Parts { get; set; } = new List<GumoArtifactPart>();
     }
 
+    [DataContract]
     public sealed class GumoUploadFileDescriptor
     {
-        [JsonProperty("filename")]
+        [DataMember(Name = "filename")]
         public string Filename { get; set; }
 
-        [JsonProperty("size_bytes")]
+        [DataMember(Name = "size_bytes")]
         public long SizeBytes { get; set; }
 
-        [JsonProperty("checksum")]
+        [DataMember(Name = "checksum")]
         public string Checksum { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoUploadNewGameTarget
     {
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoUploadGameTarget
     {
-        [JsonProperty("id")]
+        [DataMember(Name = "id")]
         public string Id { get; set; }
 
-        [JsonProperty("create")]
+        [DataMember(Name = "create")]
         public GumoUploadNewGameTarget Create { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoUploadVersionTarget
     {
-        [JsonProperty("version_name")]
+        [DataMember(Name = "version_name")]
         public string VersionName { get; set; }
 
-        [JsonProperty("version_code")]
+        [DataMember(Name = "version_code")]
         public string VersionCode { get; set; }
 
-        [JsonProperty("original_source_name")]
+        [DataMember(Name = "original_source_name")]
         public string OriginalSourceName { get; set; }
 
-        [JsonProperty("notes")]
+        [DataMember(Name = "notes")]
         public string Notes { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoCreateGamePayloadUploadRequest
     {
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("platform")]
+        [DataMember(Name = "platform")]
         public string Platform { get; set; }
 
-        [JsonProperty("game")]
+        [DataMember(Name = "game")]
         public GumoUploadGameTarget Game { get; set; }
 
-        [JsonProperty("version")]
+        [DataMember(Name = "version")]
         public GumoUploadVersionTarget Version { get; set; }
 
-        [JsonProperty("file")]
+        [DataMember(Name = "file")]
         public GumoUploadFileDescriptor File { get; set; }
 
-        [JsonProperty("idempotency_key")]
+        [DataMember(Name = "idempotency_key")]
         public string IdempotencyKey { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoCreateGamePayloadImportSessionRequest
     {
-        [JsonProperty("library_id")]
+        [DataMember(Name = "library_id")]
         public string LibraryId { get; set; }
 
-        [JsonProperty("platform")]
+        [DataMember(Name = "platform")]
         public string Platform { get; set; }
 
-        [JsonProperty("game")]
+        [DataMember(Name = "game")]
         public GumoUploadGameTarget Game { get; set; }
 
-        [JsonProperty("version")]
+        [DataMember(Name = "version")]
         public GumoUploadVersionTarget Version { get; set; }
 
-        [JsonProperty("idempotency_key")]
+        [DataMember(Name = "idempotency_key")]
         public string IdempotencyKey { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoCreateSaveSnapshotImportSessionRequest
     {
-        [JsonProperty("game_version_id")]
+        [DataMember(Name = "game_version_id")]
         public string GameVersionId { get; set; }
 
-        [JsonProperty("name")]
+        [DataMember(Name = "name")]
         public string Name { get; set; }
 
-        [JsonProperty("notes")]
+        [DataMember(Name = "notes")]
         public string Notes { get; set; }
 
-        [JsonProperty("idempotency_key")]
+        [DataMember(Name = "idempotency_key")]
         public string IdempotencyKey { get; set; }
     }
 
+    [DataContract]
     public sealed class GumoCreateImportPartRequest
     {
-        [JsonProperty("part_index")]
+        [DataMember(Name = "part_index")]
         public int? PartIndex { get; set; }
 
-        [JsonProperty("file")]
+        [DataMember(Name = "file")]
         public GumoUploadFileDescriptor File { get; set; }
     }
 }

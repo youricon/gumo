@@ -4,10 +4,10 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Playnite.SDK;
 
 namespace Gumo.Playnite
@@ -341,7 +341,7 @@ namespace Gumo.Playnite
             var body = payload == null
                 ? null
                 : new StringContent(
-                    JsonConvert.SerializeObject(payload),
+                    SerializeJson(payload),
                     Encoding.UTF8,
                     "application/json");
             return SendAsync<T>(method, path, body, cancellationToken);
@@ -371,7 +371,7 @@ namespace Gumo.Playnite
 
                     try
                     {
-                        return JsonConvert.DeserializeObject<T>(responseBody);
+                        return DeserializeJson<T>(responseBody);
                     }
                     catch (Exception exception)
                     {
@@ -388,7 +388,7 @@ namespace Gumo.Playnite
         {
             try
             {
-                var envelope = JsonConvert.DeserializeObject<GumoApiErrorEnvelope>(responseBody);
+                var envelope = DeserializeJson<GumoApiErrorEnvelope>(responseBody);
                 if (envelope?.Error != null)
                 {
                     return new GumoApiException(
@@ -408,6 +408,25 @@ namespace Gumo.Playnite
                 "http_error",
                 responseBody,
                 $"Gumo API request failed with status {(int)statusCode}.");
+        }
+
+        private static string SerializeJson(object value)
+        {
+            using (var stream = new MemoryStream())
+            {
+                var serializer = new DataContractJsonSerializer(value.GetType());
+                serializer.WriteObject(stream, value);
+                return Encoding.UTF8.GetString(stream.ToArray());
+            }
+        }
+
+        private static T DeserializeJson<T>(string json)
+        {
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json ?? string.Empty)))
+            {
+                var serializer = new DataContractJsonSerializer(typeof(T));
+                return (T)serializer.ReadObject(stream);
+            }
         }
 
         private static string NormalizeServerUrl(string rawServerUrl)

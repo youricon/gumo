@@ -881,8 +881,7 @@ namespace Gumo.Playnite
             Game sourceGame,
             CancellationToken cancellationToken)
         {
-            var gameIdToken = completedJob.Result != null ? completedJob.Result["game_id"] : null;
-            var gameId = gameIdToken != null ? gameIdToken.ToString() : null;
+            var gameId = completedJob.Result?.GameId;
             if (string.IsNullOrWhiteSpace(gameId))
             {
                 Logger.Warn($"Completed Gumo upload for '{sourceGame.Name}' did not return a game_id for metadata sync.");
@@ -1542,8 +1541,7 @@ namespace Gumo.Playnite
 
         private Game ImportCompletedUpload(GumoApiClient client, GumoJob job, PendingGameUpload pending)
         {
-            var gameIdToken = job.Result != null ? job.Result["game_id"] : null;
-            var gameId = gameIdToken != null ? gameIdToken.ToString() : null;
+            var gameId = job.Result?.GameId;
             if (string.IsNullOrWhiteSpace(gameId))
             {
                 Logger.Warn($"Completed Gumo upload for '{pending.GameName}' without a game_id result.");
