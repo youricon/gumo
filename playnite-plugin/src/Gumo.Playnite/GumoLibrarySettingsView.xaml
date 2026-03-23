@@ -28,6 +28,10 @@
       <Button Content="Test connection"
               Padding="12,4"
               Click="OnTestConnectionClick" />
+      <Button Content="Upload game archive"
+              Margin="12,0,0,0"
+              Padding="12,4"
+              Click="OnUploadGameArchiveClick" />
     </StackPanel>
 
     <TextBlock Grid.Row="4"

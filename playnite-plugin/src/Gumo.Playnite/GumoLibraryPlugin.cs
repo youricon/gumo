@@ -218,6 +218,11 @@ namespace Gumo.Playnite
             }
         }
 
+        internal void UploadGameArchiveFromSettings()
+        {
+            UploadGameArchiveFromMenu();
+        }
+
         private async Task ProbeConnectionAsync(CancellationToken cancellationToken)
         {
             try
@@ -391,7 +396,7 @@ namespace Gumo.Playnite
             {
                 Logger.Error($"Unexpected failure during Gumo upload import: {exception}");
                 PlayniteApi.Dialogs.ShowErrorMessage(
-                    "Unexpected failure during Gumo upload import. See the plugin log for details.",
+                    $"Unexpected failure during Gumo upload import: {exception.Message}",
                     "Gumo");
             }
         }

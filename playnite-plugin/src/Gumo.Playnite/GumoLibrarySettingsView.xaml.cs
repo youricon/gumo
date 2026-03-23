@@ -17,5 +17,10 @@ namespace Gumo.Playnite
         {
             plugin.TestConnectionFromSettings();
         }
+
+        private void OnUploadGameArchiveClick(object sender, System.Windows.RoutedEventArgs e)
+        {
+            plugin.UploadGameArchiveFromSettings();
+        }
     }
 }
