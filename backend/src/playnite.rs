@@ -13,8 +13,7 @@ use crate::api::state::AppState;
 use crate::api::types::{
     ArtifactPartResource, GameSummaryResource, GameVersionResource, InstallArtifactResource,
     InstallGameResource, InstallManifestResource, InstallVersionResource, LibraryResource,
-    LinkResource, SaveRestoreManifestResource, SaveSnapshotManifestResource,
-    SaveSnapshotResource,
+    LinkResource, SaveRestoreManifestResource, SaveSnapshotManifestResource, SaveSnapshotResource,
 };
 
 #[derive(Debug, Deserialize)]
@@ -57,6 +56,12 @@ pub struct PatchVersionRequest {
     pub notes: Option<Option<String>>,
     #[serde(default)]
     pub release_date: Option<Option<String>>,
+    #[serde(default)]
+    pub save_path: Option<Option<String>>,
+    #[serde(default)]
+    pub save_path_type: Option<Option<String>>,
+    #[serde(default)]
+    pub save_file_pattern: Option<Option<String>>,
 }
 
 pub async fn list_games(state: &AppState) -> Result<Vec<GameSummaryResource>, ApiError> {
@@ -70,7 +75,13 @@ pub fn list_libraries(state: &AppState) -> Vec<LibraryResource> {
         .iter()
         .filter(|library| library.enabled)
         .map(|library| LibraryResource {
-            id: format!("library_{}", library.name.to_lowercase().replace(|ch: char| !ch.is_ascii_alphanumeric(), "_")),
+            id: format!(
+                "library_{}",
+                library
+                    .name
+                    .to_lowercase()
+                    .replace(|ch: char| !ch.is_ascii_alphanumeric(), "_")
+            ),
             name: library.name.clone(),
             platform: library.platform.0.clone(),
             visibility: match library.visibility {
@@ -167,8 +178,14 @@ pub async fn patch_game(
     game_id: &str,
     request: PatchGameRequest,
 ) -> Result<GameSummaryResource, ApiError> {
-    if request.visibility.as_deref().is_some_and(|v| v != "public" && v != "private") {
-        return Err(ApiError::bad_request("visibility must be 'public' or 'private'"));
+    if request
+        .visibility
+        .as_deref()
+        .is_some_and(|v| v != "public" && v != "private")
+    {
+        return Err(ApiError::bad_request(
+            "visibility must be 'public' or 'private'",
+        ));
     }
 
     let game_row_id: i64 = sqlx::query_scalar("SELECT id FROM games WHERE public_id = ?1")
@@ -215,7 +232,15 @@ pub async fn patch_game(
     .map_err(internal_error)?;
 
     if let Some(genres) = request.genres {
-        replace_named_set(&mut tx, game_row_id, "genres", "game_genres", "genre_id", genres).await?;
+        replace_named_set(
+            &mut tx,
+            game_row_id,
+            "genres",
+            "game_genres",
+            "genre_id",
+            genres,
+        )
+        .await?;
     }
     if let Some(developers) = request.developers {
         replace_named_set(
@@ -422,7 +447,10 @@ pub async fn delete_game(state: &AppState, game_id: &str) -> Result<(), ApiError
                 return Err(ApiError::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal_error",
-                    format!("failed to remove managed storage at {}: {err}", path.display()),
+                    format!(
+                        "failed to remove managed storage at {}: {err}",
+                        path.display()
+                    ),
                 ));
             }
         }
@@ -436,6 +464,45 @@ pub async fn patch_version(
     version_id: &str,
     request: PatchVersionRequest,
 ) -> Result<GameVersionResource, ApiError> {
+    let current = sqlx::query(
+        r#"
+        SELECT save_path, save_path_type, save_file_pattern
+        FROM game_versions
+        WHERE public_id = ?1
+        "#,
+    )
+    .bind(version_id)
+    .fetch_optional(state.db())
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(|| ApiError::not_found("game version", version_id))?;
+
+    let current_save_path = normalize_optional_text(current.get("save_path"));
+    let current_save_path_type = normalize_save_path_type(current.get("save_path_type"))?;
+    let current_save_file_pattern = normalize_optional_text(current.get("save_file_pattern"));
+
+    let next_save_path = if let Some(value) = request.save_path.as_ref() {
+        normalize_optional_text(value.clone())
+    } else {
+        current_save_path
+    };
+    let next_save_path_type = if let Some(value) = request.save_path_type.as_ref() {
+        normalize_save_path_type(value.clone())?
+    } else {
+        current_save_path_type
+    };
+    let next_save_file_pattern = if let Some(value) = request.save_file_pattern.as_ref() {
+        normalize_optional_text(value.clone())
+    } else {
+        current_save_file_pattern
+    };
+
+    validate_save_path_config(
+        next_save_path.as_deref(),
+        next_save_path_type.as_deref(),
+        next_save_file_pattern.as_deref(),
+    )?;
+
     sqlx::query(
         r#"
         UPDATE game_versions
@@ -444,6 +511,9 @@ pub async fn patch_version(
           version_code = CASE WHEN ?3 THEN ?4 ELSE version_code END,
           notes = CASE WHEN ?5 THEN ?6 ELSE notes END,
           release_date = CASE WHEN ?7 THEN ?8 ELSE release_date END,
+          save_path = CASE WHEN ?9 THEN ?10 ELSE save_path END,
+          save_path_type = CASE WHEN ?11 THEN ?12 ELSE save_path_type END,
+          save_file_pattern = CASE WHEN ?13 THEN ?14 ELSE save_file_pattern END,
           updated_at = CURRENT_TIMESTAMP
         WHERE public_id = ?1
         "#,
@@ -456,6 +526,12 @@ pub async fn patch_version(
     .bind(request.notes.flatten())
     .bind(request.release_date.is_some())
     .bind(request.release_date.flatten())
+    .bind(request.save_path.is_some())
+    .bind(next_save_path.as_deref())
+    .bind(request.save_path_type.is_some())
+    .bind(next_save_path_type.as_deref())
+    .bind(request.save_file_pattern.is_some())
+    .bind(next_save_file_pattern.as_deref())
     .execute(state.db())
     .await
     .map_err(internal_error)?;
@@ -569,7 +645,9 @@ pub async fn get_save_restore_manifest(
     let parts = if part_rows.is_empty() {
         vec![ArtifactPartResource {
             part_index: 0,
-            download_url: format!("/api/integrations/playnite/save-snapshots/{snapshot_id}/download"),
+            download_url: format!(
+                "/api/integrations/playnite/save-snapshots/{snapshot_id}/download"
+            ),
             size_bytes: row.get::<i64, _>("size_bytes") as u64,
             checksum: row.get("checksum"),
         }]
@@ -619,7 +697,8 @@ pub async fn download_artifact(state: &AppState, artifact_id: &str) -> Result<Re
     .map_err(internal_error)?
     .ok_or_else(|| ApiError::not_found("artifact", artifact_id))?;
 
-    let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
+    let path = PathBuf::from(row.get::<String, _>("root_path"))
+        .join(row.get::<String, _>("relative_path"));
     file_response(path).await
 }
 
@@ -645,7 +724,8 @@ pub async fn download_artifact_part(
     .map_err(internal_error)?
     .ok_or_else(|| ApiError::not_found("artifact part", artifact_id))?;
 
-    let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
+    let path = PathBuf::from(row.get::<String, _>("root_path"))
+        .join(row.get::<String, _>("relative_path"));
     file_response(path).await
 }
 
@@ -696,11 +776,15 @@ pub async fn download_save_snapshot_part(
     .map_err(internal_error)?
     .ok_or_else(|| ApiError::not_found("save snapshot part", snapshot_id))?;
 
-    let path = PathBuf::from(row.get::<String, _>("root_path")).join(row.get::<String, _>("relative_path"));
+    let path = PathBuf::from(row.get::<String, _>("root_path"))
+        .join(row.get::<String, _>("relative_path"));
     file_response(path).await
 }
 
-async fn load_game_resource(pool: &SqlitePool, game_id: &str) -> Result<GameSummaryResource, ApiError> {
+async fn load_game_resource(
+    pool: &SqlitePool,
+    game_id: &str,
+) -> Result<GameSummaryResource, ApiError> {
     let row = sqlx::query(
         r#"
         SELECT public_id, name, sorting_name, description, release_date, visibility,
@@ -722,9 +806,30 @@ async fn load_game_resource(pool: &SqlitePool, game_id: &str) -> Result<GameSumm
         description: row.get("description"),
         release_date: row.get("release_date"),
         platforms: load_game_platforms(pool, row.get("public_id")).await?,
-        genres: load_named_set(pool, "genres", "game_genres", "genre_id", row.get("public_id")).await?,
-        developers: load_named_set(pool, "developers", "game_developers", "developer_id", row.get("public_id")).await?,
-        publishers: load_named_set(pool, "publishers", "game_publishers", "publisher_id", row.get("public_id")).await?,
+        genres: load_named_set(
+            pool,
+            "genres",
+            "game_genres",
+            "genre_id",
+            row.get("public_id"),
+        )
+        .await?,
+        developers: load_named_set(
+            pool,
+            "developers",
+            "game_developers",
+            "developer_id",
+            row.get("public_id"),
+        )
+        .await?,
+        publishers: load_named_set(
+            pool,
+            "publishers",
+            "game_publishers",
+            "publisher_id",
+            row.get("public_id"),
+        )
+        .await?,
         links: load_links(pool, row.get("public_id")).await?,
         visibility: row.get("visibility"),
         cover_image: row.get("cover_image"),
@@ -735,11 +840,15 @@ async fn load_game_resource(pool: &SqlitePool, game_id: &str) -> Result<GameSumm
     })
 }
 
-async fn load_version_resource(pool: &SqlitePool, version_id: &str) -> Result<GameVersionResource, ApiError> {
+async fn load_version_resource(
+    pool: &SqlitePool,
+    version_id: &str,
+) -> Result<GameVersionResource, ApiError> {
     let row = sqlx::query(
         r#"
         SELECT gv.public_id, g.public_id AS game_public_id, l.public_id AS library_public_id,
                gv.version_name, gv.version_code, gv.original_source_name, gv.release_date, gv.is_latest, gv.notes,
+               gv.save_path, gv.save_path_type, gv.save_file_pattern,
                gv.created_at, gv.updated_at
         FROM game_versions gv
         INNER JOIN games g ON g.id = gv.game_id
@@ -763,12 +872,18 @@ async fn load_version_resource(pool: &SqlitePool, version_id: &str) -> Result<Ga
         release_date: row.get("release_date"),
         is_latest: row.get::<i64, _>("is_latest") == 1,
         notes: row.get("notes"),
+        save_path: row.get("save_path"),
+        save_path_type: row.get("save_path_type"),
+        save_file_pattern: row.get("save_file_pattern"),
         created_at: timestamp_to_rfc3339(&row.get::<String, _>("created_at")),
         updated_at: timestamp_to_rfc3339(&row.get::<String, _>("updated_at")),
     })
 }
 
-async fn load_primary_artifact(pool: &SqlitePool, version_id: &str) -> Result<crate::api::types::ArtifactResource, ApiError> {
+async fn load_primary_artifact(
+    pool: &SqlitePool,
+    version_id: &str,
+) -> Result<crate::api::types::ArtifactResource, ApiError> {
     let row = sqlx::query(
         r#"
         SELECT a.public_id, gv.public_id AS version_public_id, a.archive_type, a.size_bytes,
@@ -902,8 +1017,7 @@ async fn replace_named_set(
     join_table: &str,
     foreign_column: &str,
     values: Vec<String>,
-) -> Result<(), ApiError>
-{
+) -> Result<(), ApiError> {
     let delete_sql = format!("DELETE FROM {join_table} WHERE game_id = ?1");
     sqlx::query(&delete_sql)
         .bind(game_row_id)
@@ -912,7 +1026,8 @@ async fn replace_named_set(
         .map_err(internal_error)?;
 
     for value in values {
-        let insert_named_sql = format!("INSERT INTO {table} (name) VALUES (?1) ON CONFLICT(name) DO NOTHING");
+        let insert_named_sql =
+            format!("INSERT INTO {table} (name) VALUES (?1) ON CONFLICT(name) DO NOTHING");
         sqlx::query(&insert_named_sql)
             .bind(&value)
             .execute(&mut **tx)
@@ -926,9 +1041,8 @@ async fn replace_named_set(
             .await
             .map_err(internal_error)?;
 
-        let attach_sql = format!(
-            "INSERT INTO {join_table} (game_id, {foreign_column}) VALUES (?1, ?2)"
-        );
+        let attach_sql =
+            format!("INSERT INTO {join_table} (game_id, {foreign_column}) VALUES (?1, ?2)");
         sqlx::query(&attach_sql)
             .bind(game_row_id)
             .bind(named_id)
@@ -955,6 +1069,48 @@ async fn file_response(path: PathBuf) -> Result<Response, ApiError> {
 
 fn timestamp_to_rfc3339(value: &str) -> String {
     value.replace(' ', "T") + "Z"
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|item| {
+        let trimmed = item.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn normalize_save_path_type(value: Option<String>) -> Result<Option<String>, ApiError> {
+    let normalized = normalize_optional_text(value);
+    match normalized.as_deref() {
+        None => Ok(None),
+        Some("relative") | Some("absolute") => Ok(normalized),
+        Some(_) => Err(ApiError::bad_request(
+            "save_path_type must be 'relative' or 'absolute'",
+        )),
+    }
+}
+
+fn validate_save_path_config(
+    save_path: Option<&str>,
+    save_path_type: Option<&str>,
+    save_file_pattern: Option<&str>,
+) -> Result<(), ApiError> {
+    if save_path.is_some() != save_path_type.is_some() {
+        return Err(ApiError::bad_request(
+            "save_path and save_path_type must be set together",
+        ));
+    }
+
+    if save_path.is_none() && save_file_pattern.is_some() {
+        return Err(ApiError::bad_request(
+            "save_file_pattern requires save_path to be configured",
+        ));
+    }
+
+    Ok(())
 }
 
 async fn list_managed_game_storage_paths(

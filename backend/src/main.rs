@@ -51,9 +51,7 @@ fn parse_config_path(args: impl Iterator<Item = String>) -> Result<PathBuf> {
 
     while let Some(arg) = args.next() {
         if arg == "--config" {
-            let value = args
-                .next()
-                .context("missing value after --config")?;
+            let value = args.next().context("missing value after --config")?;
             return Ok(PathBuf::from(value));
         }
     }
@@ -65,10 +63,9 @@ fn parse_config_path(args: impl Iterator<Item = String>) -> Result<PathBuf> {
 }
 
 fn init_tracing(config: &AppConfig) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            let level = config.logging.level.trim();
-            EnvFilter::new(format!("gumo={level},tower_http={level}"))
-        });
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        let level = config.logging.level.trim();
+        EnvFilter::new(format!("gumo={level},tower_http={level}"))
+    });
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }

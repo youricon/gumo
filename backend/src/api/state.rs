@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use axum::Router;
 use sqlx::SqlitePool;
@@ -44,9 +44,7 @@ impl AppState {
         &self.shared.db
     }
 
-    pub fn admin_sessions(
-        &self,
-    ) -> &Mutex<std::collections::HashMap<String, AdminSession>> {
+    pub fn admin_sessions(&self) -> &Mutex<std::collections::HashMap<String, AdminSession>> {
         &self.shared.admin_sessions
     }
 }
@@ -59,9 +57,7 @@ pub fn frontend_router() -> Option<Router> {
     }
 
     Some(
-        Router::new().fallback_service(
-            ServeDir::new(dir).not_found_service(ServeFile::new(index)),
-        ),
+        Router::new().fallback_service(ServeDir::new(dir).not_found_service(ServeFile::new(index))),
     )
 }
 

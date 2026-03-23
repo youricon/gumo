@@ -76,7 +76,7 @@ namespace Gumo.Playnite
 
         public Task<GumoGameVersion> PatchVersionAsync(
             string versionId,
-            object payload,
+            GumoPatchVersionRequest payload,
             CancellationToken cancellationToken)
         {
             return SendJsonAsync<GumoGameVersion>(

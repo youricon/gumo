@@ -86,6 +86,9 @@ pub struct GameVersionResource {
     pub release_date: Option<String>,
     pub is_latest: bool,
     pub notes: Option<String>,
+    pub save_path: Option<String>,
+    pub save_path_type: Option<String>,
+    pub save_file_pattern: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

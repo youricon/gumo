@@ -198,6 +198,15 @@ namespace Gumo.Playnite
         [DataMember(Name = "notes")]
         public string Notes { get; set; }
 
+        [DataMember(Name = "save_path")]
+        public string SavePath { get; set; }
+
+        [DataMember(Name = "save_path_type")]
+        public string SavePathType { get; set; }
+
+        [DataMember(Name = "save_file_pattern")]
+        public string SaveFilePattern { get; set; }
+
         [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
 
@@ -515,6 +524,19 @@ namespace Gumo.Playnite
 
         [DataMember(Name = "created_at")]
         public string CreatedAt { get; set; }
+    }
+
+    [DataContract]
+    public sealed class GumoPatchVersionRequest
+    {
+        [DataMember(Name = "save_path")]
+        public string SavePath { get; set; }
+
+        [DataMember(Name = "save_path_type")]
+        public string SavePathType { get; set; }
+
+        [DataMember(Name = "save_file_pattern")]
+        public string SaveFilePattern { get; set; }
     }
 
     [DataContract]

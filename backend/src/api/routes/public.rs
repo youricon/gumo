@@ -5,8 +5,7 @@ use axum::{Json, Router};
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
-    json, GameSummaryResource, GameVersionResource, LibraryResource, ListResponse,
-    PlatformResource,
+    json, GameSummaryResource, GameVersionResource, LibraryResource, ListResponse, PlatformResource,
 };
 use crate::playnite;
 

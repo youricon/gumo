@@ -63,7 +63,12 @@ impl AppConfig {
             true,
             &mut errors,
         );
-        validate_path("storage.cache_dir", &self.storage.cache_dir, false, &mut errors);
+        validate_path(
+            "storage.cache_dir",
+            &self.storage.cache_dir,
+            false,
+            &mut errors,
+        );
         if let Some(temp_dir) = &self.storage.temp_dir {
             validate_path("storage.temp_dir", temp_dir, false, &mut errors);
         }
@@ -90,7 +95,11 @@ impl AppConfig {
 
         if self.integrations.playnite.enabled {
             if let Some(default_platform) = &self.integrations.playnite.default_platform {
-                if !self.platforms.iter().any(|platform| &platform.id == default_platform) {
+                if !self
+                    .platforms
+                    .iter()
+                    .any(|platform| &platform.id == default_platform)
+                {
                     errors.push(format!(
                         "integrations.playnite.default_platform references unknown platform '{}'",
                         default_platform
@@ -118,7 +127,11 @@ impl AppConfig {
                 false,
                 &mut errors,
             );
-            if !self.platforms.iter().any(|platform| platform.id == library.platform) {
+            if !self
+                .platforms
+                .iter()
+                .any(|platform| platform.id == library.platform)
+            {
                 errors.push(format!(
                     "library '{}' references unknown platform '{}'",
                     library.name, library.platform
@@ -330,8 +343,8 @@ mod tests {
 
     #[test]
     fn validates_example_config() {
-        let raw = ConfigAssets::get("gumo.example.toml")
-            .expect("embedded example config should exist");
+        let raw =
+            ConfigAssets::get("gumo.example.toml").expect("embedded example config should exist");
         let raw = std::str::from_utf8(raw.data.as_ref())
             .expect("embedded example config should be valid UTF-8");
         let config: AppConfig = toml::from_str(raw).expect("example config should parse");
@@ -372,7 +385,9 @@ enabled = true
 "#;
 
         let config: AppConfig = toml::from_str(raw).expect("config should parse");
-        let error = config.validate().expect_err("config should fail validation");
+        let error = config
+            .validate()
+            .expect_err("config should fail validation");
         let message = error.to_string();
         assert!(message.contains("unknown platform 'switch'"));
     }
@@ -405,7 +420,11 @@ enabled = true
 "#;
 
         let config: AppConfig = toml::from_str(raw).expect("config should parse");
-        let error = config.validate().expect_err("config should fail validation");
-        assert!(error.to_string().contains("auth.proxy_user_header is required"));
+        let error = config
+            .validate()
+            .expect_err("config should fail validation");
+        assert!(error
+            .to_string()
+            .contains("auth.proxy_user_header is required"));
     }
 }

@@ -16,15 +16,15 @@ use crate::api::auth;
 use crate::api::error::ApiError;
 use crate::api::state::AppState;
 use crate::api::types::{
-    json, GameSummaryResource, GameVersionResource, ImportSessionResource,
-    InstallManifestResource, JobResource, LibraryResource, ListResponse, SaveRestoreManifestResource,
-    SaveSnapshotResource, UploadPartResource, UploadResource, MediaAssetResource,
+    json, GameSummaryResource, GameVersionResource, ImportSessionResource, InstallManifestResource,
+    JobResource, LibraryResource, ListResponse, MediaAssetResource, SaveRestoreManifestResource,
+    SaveSnapshotResource, UploadPartResource, UploadResource,
 };
 use crate::playnite::{self, PatchGameRequest, PatchVersionRequest};
 use crate::upload_jobs::{
     self, CreateGamePayloadImportSessionRequest, CreateGamePayloadUploadRequest,
-    CreateImportPartRequest, CreateSaveSnapshotImportSessionRequest, CreateSaveSnapshotUploadRequest,
-    ListQuery,
+    CreateImportPartRequest, CreateSaveSnapshotImportSessionRequest,
+    CreateSaveSnapshotUploadRequest, ListQuery,
 };
 
 pub fn router(state: AppState) -> Router<AppState> {
@@ -42,8 +42,14 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/versions/{id}/save-snapshots", get(list_save_snapshots))
         .route("/versions/{id}/save-uploads", post(create_save_upload))
         .route("/artifacts/{id}/download", get(download_artifact))
-        .route("/artifacts/{id}/parts/{part_index}/download", get(download_artifact_part))
-        .route("/save-snapshots/{id}/restore", get(get_save_restore_manifest))
+        .route(
+            "/artifacts/{id}/parts/{part_index}/download",
+            get(download_artifact_part),
+        )
+        .route(
+            "/save-snapshots/{id}/restore",
+            get(get_save_restore_manifest),
+        )
         .route("/save-snapshots/{id}/download", get(download_save_snapshot))
         .route(
             "/save-snapshots/{id}/parts/{part_index}/download",
@@ -53,10 +59,22 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/uploads/{id}", get(get_upload))
         .route("/import-sessions", get(list_import_sessions))
         .route("/import-sessions/{id}", get(get_import_session))
-        .route("/import-sessions/{id}/parts", get(list_import_parts).post(create_import_part))
-        .route("/import-sessions/{id}/finalize", post(finalize_import_session))
-        .route("/import-sessions/game-payloads", post(create_game_payload_import_session))
-        .route("/import-sessions/save-snapshots", post(create_save_snapshot_import_session))
+        .route(
+            "/import-sessions/{id}/parts",
+            get(list_import_parts).post(create_import_part),
+        )
+        .route(
+            "/import-sessions/{id}/finalize",
+            post(finalize_import_session),
+        )
+        .route(
+            "/import-sessions/game-payloads",
+            post(create_game_payload_import_session),
+        )
+        .route(
+            "/import-sessions/save-snapshots",
+            post(create_save_snapshot_import_session),
+        )
         .route(
             "/upload-parts/{id}/content",
             put(put_import_part_content).layer(DefaultBodyLimit::disable()),
@@ -115,27 +133,23 @@ async fn upload_media(
     let digest = Sha256::digest(&body);
     let file_name = format!("{}.{}", hex_encode(digest), extension);
     let media_dir = state.config().storage.cache_dir.join("media");
-    fs::create_dir_all(&media_dir)
-        .await
-        .map_err(|err| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error",
-                format!("failed to create media directory: {err}"),
-            )
-        })?;
+    fs::create_dir_all(&media_dir).await.map_err(|err| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            format!("failed to create media directory: {err}"),
+        )
+    })?;
 
     let file_path = media_dir.join(&file_name);
     if fs::metadata(&file_path).await.is_err() {
-        fs::write(&file_path, &body)
-            .await
-            .map_err(|err| {
-                ApiError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal_error",
-                    format!("failed to store media asset: {err}"),
-                )
-            })?;
+        fs::write(&file_path, &body).await.map_err(|err| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                format!("failed to store media asset: {err}"),
+            )
+        })?;
     }
 
     Ok((
@@ -373,7 +387,9 @@ async fn get_save_restore_manifest(
     Path(id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<SaveRestoreManifestResource>, ApiError> {
-    Ok(Json(playnite::get_save_restore_manifest(&state, &id).await?))
+    Ok(Json(
+        playnite::get_save_restore_manifest(&state, &id).await?,
+    ))
 }
 
 async fn download_save_snapshot(

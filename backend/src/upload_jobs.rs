@@ -242,7 +242,9 @@ pub async fn create_game_payload_upload(
     request: CreateGamePayloadUploadRequest,
 ) -> Result<UploadResource, ApiError> {
     if request.file.size_bytes == 0 {
-        return Err(ApiError::bad_request("file.size_bytes must be greater than 0"));
+        return Err(ApiError::bad_request(
+            "file.size_bytes must be greater than 0",
+        ));
     }
     validate_game_target(&request.game)?;
 
@@ -282,7 +284,10 @@ pub async fn create_game_payload_upload(
     .bind(library.id)
     .bind(platform.id)
     .bind(&request.file.filename)
-    .bind(i64::try_from(request.file.size_bytes).map_err(|_| ApiError::bad_request("file.size_bytes is too large"))?)
+    .bind(
+        i64::try_from(request.file.size_bytes)
+            .map_err(|_| ApiError::bad_request("file.size_bytes is too large"))?,
+    )
     .bind(&request.file.checksum)
     .bind(temp_path.to_string_lossy().to_string())
     .bind(&request.idempotency_key)
@@ -299,7 +304,9 @@ pub async fn create_save_snapshot_upload(
     request: CreateSaveSnapshotUploadRequest,
 ) -> Result<UploadResource, ApiError> {
     if request.file.size_bytes == 0 {
-        return Err(ApiError::bad_request("file.size_bytes must be greater than 0"));
+        return Err(ApiError::bad_request(
+            "file.size_bytes must be greater than 0",
+        ));
     }
 
     if let Some(idempotency_key) = &request.idempotency_key {
@@ -340,7 +347,10 @@ pub async fn create_save_snapshot_upload(
     .bind(game_version.game_id)
     .bind(game_version.id)
     .bind(&request.file.filename)
-    .bind(i64::try_from(request.file.size_bytes).map_err(|_| ApiError::bad_request("file.size_bytes is too large"))?)
+    .bind(
+        i64::try_from(request.file.size_bytes)
+            .map_err(|_| ApiError::bad_request("file.size_bytes is too large"))?,
+    )
     .bind(&request.file.checksum)
     .bind(temp_path.to_string_lossy().to_string())
     .bind(&request.idempotency_key)
@@ -360,7 +370,8 @@ pub async fn create_game_payload_import_session(
 
     if let Some(idempotency_key) = &request.idempotency_key {
         if let Some(existing) =
-            find_import_session_by_idempotency_key(state.db(), "game_payload", idempotency_key).await?
+            find_import_session_by_idempotency_key(state.db(), "game_payload", idempotency_key)
+                .await?
         {
             return import_session_to_resource(state.db(), existing).await;
         }
@@ -410,7 +421,8 @@ pub async fn create_save_snapshot_import_session(
 ) -> Result<ImportSessionResource, ApiError> {
     if let Some(idempotency_key) = &request.idempotency_key {
         if let Some(existing) =
-            find_import_session_by_idempotency_key(state.db(), "save_snapshot", idempotency_key).await?
+            find_import_session_by_idempotency_key(state.db(), "save_snapshot", idempotency_key)
+                .await?
         {
             return import_session_to_resource(state.db(), existing).await;
         }
@@ -462,11 +474,16 @@ pub async fn create_import_part(
     request: CreateImportPartRequest,
 ) -> Result<UploadPartResource, ApiError> {
     if request.file.size_bytes == 0 {
-        return Err(ApiError::bad_request("file.size_bytes must be greater than 0"));
+        return Err(ApiError::bad_request(
+            "file.size_bytes must be greater than 0",
+        ));
     }
 
     let session = get_import_session_row(state.db(), import_session_public_id).await?;
-    validate_upload_state(&session.state, &["created", "uploading", "uploaded", "abandoned"])?;
+    validate_upload_state(
+        &session.state,
+        &["created", "uploading", "uploaded", "abandoned"],
+    )?;
 
     let part_index = match request.part_index {
         Some(value) => i64::from(value),
@@ -536,7 +553,8 @@ pub async fn put_import_part_content(
         ));
     }
 
-    let received_size = i64::try_from(body.len()).map_err(|_| ApiError::bad_request("upload body is too large"))?;
+    let received_size =
+        i64::try_from(body.len()).map_err(|_| ApiError::bad_request("upload body is too large"))?;
     if received_size != part.declared_size_bytes {
         mark_upload_part_abandoned(
             state.db(),
@@ -583,7 +601,9 @@ pub async fn finalize_import_session(
     validate_upload_state(&session.state, &["uploaded"])?;
     let parts = get_upload_parts_for_session(state.db(), session.id).await?;
     if parts.is_empty() {
-        return Err(ApiError::bad_request("import session has no uploaded parts"));
+        return Err(ApiError::bad_request(
+            "import session has no uploaded parts",
+        ));
     }
     if parts.iter().any(|part| part.state != "uploaded") {
         return Err(ApiError::bad_request(
@@ -700,7 +720,8 @@ pub async fn put_upload_content(
         ));
     }
 
-    let received_size = i64::try_from(body.len()).map_err(|_| ApiError::bad_request("upload body is too large"))?;
+    let received_size =
+        i64::try_from(body.len()).map_err(|_| ApiError::bad_request("upload body is too large"))?;
     if received_size != upload.declared_size_bytes {
         mark_upload_abandoned(
             state.db(),
@@ -787,7 +808,10 @@ pub async fn finalize_upload(
     Ok(job_to_resource(job))
 }
 
-pub async fn get_upload(state: &AppState, upload_public_id: &str) -> Result<UploadResource, ApiError> {
+pub async fn get_upload(
+    state: &AppState,
+    upload_public_id: &str,
+) -> Result<UploadResource, ApiError> {
     let row = get_upload_row(state.db(), upload_public_id).await?;
     upload_to_resource(row)
 }
@@ -813,10 +837,7 @@ pub async fn get_job(state: &AppState, job_public_id: &str) -> Result<JobResourc
     Ok(job_to_resource(row))
 }
 
-pub async fn list_jobs(
-    state: &AppState,
-    query: ListQuery,
-) -> Result<Vec<JobResource>, ApiError> {
+pub async fn list_jobs(state: &AppState, query: ListQuery) -> Result<Vec<JobResource>, ApiError> {
     let scope = query.scope.as_deref().unwrap_or("recent");
     let clause = job_scope_clause(scope)?;
     let sql = format!("SELECT * FROM jobs WHERE {clause} ORDER BY updated_at DESC LIMIT 50");
@@ -824,7 +845,11 @@ pub async fn list_jobs(
         .fetch_all(state.db())
         .await
         .map_err(internal_error)?;
-    Ok(rows.into_iter().map(job_from_row).map(job_to_resource).collect())
+    Ok(rows
+        .into_iter()
+        .map(job_from_row)
+        .map(job_to_resource)
+        .collect())
 }
 
 pub async fn cleanup_stale_uploads(state: &AppState) -> Result<()> {
@@ -860,9 +885,10 @@ pub async fn cleanup_stale_uploads(state: &AppState) -> Result<()> {
 }
 
 pub async fn run_queued_jobs_once(state: &AppState) -> Result<()> {
-    let rows = sqlx::query("SELECT * FROM jobs WHERE state = 'pending' ORDER BY created_at ASC LIMIT 10")
-        .fetch_all(state.db())
-        .await?;
+    let rows =
+        sqlx::query("SELECT * FROM jobs WHERE state = 'pending' ORDER BY created_at ASC LIMIT 10")
+            .fetch_all(state.db())
+            .await?;
 
     for row in rows {
         let job = job_from_row(row);
@@ -886,10 +912,12 @@ async fn execute_job(state: &AppState, job_id: i64) -> Result<()> {
         let intent: UploadIntent = serde_json::from_str(&upload.intent_payload)?;
 
         set_job_progress(state.db(), job.id, "archiving", 25).await?;
-        sqlx::query("UPDATE uploads SET state = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
-            .bind(upload.id)
-            .execute(state.db())
-            .await?;
+        sqlx::query(
+            "UPDATE uploads SET state = 'processing', updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+        )
+        .bind(upload.id)
+        .execute(state.db())
+        .await?;
 
         match intent {
             UploadIntent::GamePayload {
@@ -899,9 +927,16 @@ async fn execute_job(state: &AppState, job_id: i64) -> Result<()> {
                 version,
                 file,
             } => {
-                let created =
-                    process_game_payload_job(state, &upload, &library_public_id, &platform, &game, &version, &file)
-                        .await?;
+                let created = process_game_payload_job(
+                    state,
+                    &upload,
+                    &library_public_id,
+                    &platform,
+                    &game,
+                    &version,
+                    &file,
+                )
+                .await?;
                 serde_json::json!({
                     "game_id": created.game_public_id,
                     "game_version_id": created.game_version_public_id,
@@ -951,9 +986,16 @@ async fn execute_job(state: &AppState, job_id: i64) -> Result<()> {
                 version,
                 ..
             } => {
-                let created =
-                    process_game_payload_import_session_job(state, &session, &parts, &library_public_id, &platform, &game, &version)
-                        .await?;
+                let created = process_game_payload_import_session_job(
+                    state,
+                    &session,
+                    &parts,
+                    &library_public_id,
+                    &platform,
+                    &game,
+                    &version,
+                )
+                .await?;
                 serde_json::json!({
                     "game_id": created.game_public_id,
                     "game_version_id": created.game_version_public_id,
@@ -1085,13 +1127,19 @@ async fn process_game_payload_job(
                 public_id: row.get("public_id"),
             }
         }
-        _ => return Err(anyhow!("game upload target must specify either id or create")),
+        _ => {
+            return Err(anyhow!(
+                "game upload target must specify either id or create"
+            ))
+        }
     };
 
-    sqlx::query("UPDATE game_versions SET is_latest = 0, updated_at = CURRENT_TIMESTAMP WHERE game_id = ?1")
-        .bind(game.id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE game_versions SET is_latest = 0, updated_at = CURRENT_TIMESTAMP WHERE game_id = ?1",
+    )
+    .bind(game.id)
+    .execute(&mut *tx)
+    .await?;
 
     let version_public_id = prefixed_id("ver");
     let version_row = sqlx::query(
@@ -1207,13 +1255,19 @@ async fn process_game_payload_import_session_job(
                 public_id: row.get("public_id"),
             }
         }
-        _ => return Err(anyhow!("game upload target must specify either id or create")),
+        _ => {
+            return Err(anyhow!(
+                "game upload target must specify either id or create"
+            ))
+        }
     };
 
-    sqlx::query("UPDATE game_versions SET is_latest = 0, updated_at = CURRENT_TIMESTAMP WHERE game_id = ?1")
-        .bind(game.id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE game_versions SET is_latest = 0, updated_at = CURRENT_TIMESTAMP WHERE game_id = ?1",
+    )
+    .bind(game.id)
+    .execute(&mut *tx)
+    .await?;
 
     let version_public_id = prefixed_id("ver");
     let version_row = sqlx::query(
@@ -1240,8 +1294,13 @@ async fn process_game_payload_import_session_job(
         id: version_row.get("id"),
         public_id: version_row.get("public_id"),
     };
-    let stored_parts =
-        store_import_session_parts(&library.root_path, "games", &version_entity.public_id, parts).await?;
+    let stored_parts = store_import_session_parts(
+        &library.root_path,
+        "games",
+        &version_entity.public_id,
+        parts,
+    )
+    .await?;
     let artifact_public_id = prefixed_id("art");
     let aggregate_checksum = aggregate_part_checksum(&stored_parts)?;
     let total_size = stored_parts.iter().map(|part| part.size_bytes).sum::<i64>();
@@ -1359,7 +1418,8 @@ async fn process_save_snapshot_import_session_job(
     let library = get_library_by_internal_id(state.db(), game_version.library_id).await?;
     let snapshot_public_id = prefixed_id("save");
     let stored_parts =
-        store_import_session_parts(&library.root_path, "saves", game_version_public_id, parts).await?;
+        store_import_session_parts(&library.root_path, "saves", game_version_public_id, parts)
+            .await?;
     let aggregate_checksum = aggregate_part_checksum(&stored_parts)?;
     let total_size = stored_parts.iter().map(|part| part.size_bytes).sum::<i64>();
 
@@ -1453,7 +1513,12 @@ async fn set_job_progress(pool: &SqlitePool, job_id: i64, phase: &str, percent: 
     Ok(())
 }
 
-async fn mark_upload_abandoned(pool: &SqlitePool, upload_id: i64, code: &str, message: &str) -> Result<(), ApiError> {
+async fn mark_upload_abandoned(
+    pool: &SqlitePool,
+    upload_id: i64,
+    code: &str,
+    message: &str,
+) -> Result<(), ApiError> {
     sqlx::query(
         "UPDATE uploads SET state = 'abandoned', error_code = ?2, error_message = ?3, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
     )
@@ -1518,7 +1583,10 @@ async fn find_import_session_by_idempotency_key(
     Ok(row.map(import_session_from_row))
 }
 
-async fn next_import_part_index(pool: &SqlitePool, import_session_id: i64) -> Result<i64, ApiError> {
+async fn next_import_part_index(
+    pool: &SqlitePool,
+    import_session_id: i64,
+) -> Result<i64, ApiError> {
     let next = sqlx::query_scalar::<_, Option<i64>>(
         "SELECT MAX(part_index) + 1 FROM upload_parts WHERE import_session_id = ?1",
     )
@@ -1555,12 +1623,14 @@ async fn sync_import_session_upload_state(
         "uploading"
     };
 
-    sqlx::query("UPDATE import_sessions SET state = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1")
-        .bind(import_session_id)
-        .bind(state)
-        .execute(pool)
-        .await
-        .map_err(internal_error)?;
+    sqlx::query(
+        "UPDATE import_sessions SET state = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+    )
+    .bind(import_session_id)
+    .bind(state)
+    .execute(pool)
+    .await
+    .map_err(internal_error)?;
     Ok(())
 }
 
@@ -1615,7 +1685,10 @@ async fn lookup_platform(pool: &SqlitePool, platform: &str) -> Result<BasicEntit
     })
 }
 
-async fn lookup_platform_id_for_library(pool: &SqlitePool, library_id: i64) -> Result<Option<i64>, ApiError> {
+async fn lookup_platform_id_for_library(
+    pool: &SqlitePool,
+    library_id: i64,
+) -> Result<Option<i64>, ApiError> {
     let row = sqlx::query(
         r#"
         SELECT p.id
@@ -1695,7 +1768,10 @@ async fn get_import_session_row(
     Ok(import_session_from_row(row))
 }
 
-async fn get_upload_part_row(pool: &SqlitePool, public_id: &str) -> Result<UploadPartRow, ApiError> {
+async fn get_upload_part_row(
+    pool: &SqlitePool,
+    public_id: &str,
+) -> Result<UploadPartRow, ApiError> {
     let row = sqlx::query("SELECT * FROM upload_parts WHERE public_id = ?1")
         .bind(public_id)
         .fetch_optional(pool)
@@ -1840,7 +1916,10 @@ fn job_from_row(row: sqlx::sqlite::SqliteRow) -> JobRow {
 fn upload_to_resource(upload: UploadRow) -> Result<UploadResource, ApiError> {
     let state = upload.state.clone();
     let retryable = matches!(state.as_str(), "abandoned" | "failed");
-    let platform = upload.platform_id.map(|_| "pc".to_string()).unwrap_or_else(|| "pc".to_string());
+    let platform = upload
+        .platform_id
+        .map(|_| "pc".to_string())
+        .unwrap_or_else(|| "pc".to_string());
     Ok(UploadResource {
         id: upload.public_id,
         kind: upload.kind,
@@ -1946,7 +2025,9 @@ fn upload_part_to_resource(part: UploadPartRow) -> Result<UploadPartResource, Ap
         updated_at: timestamp_to_rfc3339(&part.updated_at),
         error: part.error_code.map(|code| ResourceError {
             code,
-            message: part.error_message.unwrap_or_else(|| "upload part failed".to_string()),
+            message: part
+                .error_message
+                .unwrap_or_else(|| "upload part failed".to_string()),
             retryable: Some(retryable),
         }),
     })
@@ -1969,7 +2050,9 @@ fn job_to_resource(job: JobRow) -> JobResource {
             .and_then(|value| serde_json::from_str(&value).ok()),
         error: job.error_code.map(|code| ResourceError {
             code,
-            message: job.error_message.unwrap_or_else(|| "job failed".to_string()),
+            message: job
+                .error_message
+                .unwrap_or_else(|| "job failed".to_string()),
             retryable: job.retryable.map(|value| value == 1),
         }),
         created_at: timestamp_to_rfc3339(&job.created_at),
@@ -2041,8 +2124,8 @@ async fn write_archive_for_upload(
         let input = fs::read(&temp_path_for_task)?;
         let file = fs::File::create(&final_path_for_task)?;
         let mut archive = zip::ZipWriter::new(file);
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         archive.start_file(original_filename, options)?;
         archive.write_all(&input)?;
         archive.finish()?;
@@ -2167,19 +2250,14 @@ fn compute_sha256(path: &Path) -> Result<String> {
 }
 
 fn upload_temp_path(state: &AppState, upload_public_id: &str) -> PathBuf {
-    let root = state
-        .config()
-        .storage
-        .temp_dir
-        .clone()
-        .unwrap_or_else(|| {
-            state
-                .config()
-                .libraries
-                .first()
-                .map(|library| library.root_path.join("tmp"))
-                .unwrap_or_else(|| PathBuf::from("./tmp"))
-        });
+    let root = state.config().storage.temp_dir.clone().unwrap_or_else(|| {
+        state
+            .config()
+            .libraries
+            .first()
+            .map(|library| library.root_path.join("tmp"))
+            .unwrap_or_else(|| PathBuf::from("./tmp"))
+    });
     root.join(format!("{upload_public_id}.upload"))
 }
 
@@ -2354,7 +2432,9 @@ enabled = true
     async fn make_state() -> (AppState, PathBuf) {
         let root = temp_test_root();
         let config = test_config(&root);
-        let pool = connect_and_migrate(&config.storage).await.expect("db setup");
+        let pool = connect_and_migrate(&config.storage)
+            .await
+            .expect("db setup");
         sync_config_reference_data(&pool, &config)
             .await
             .expect("reference sync");
@@ -2375,12 +2455,12 @@ enabled = true
                         name: "Example".to_string(),
                     }),
                 },
-                    version: VersionUploadTarget {
-                        version_name: "1.0.0".to_string(),
-                        version_code: None,
-                        original_source_name: None,
-                        notes: None,
-                    },
+                version: VersionUploadTarget {
+                    version_name: "1.0.0".to_string(),
+                    version_code: None,
+                    original_source_name: None,
+                    notes: None,
+                },
                 file: UploadFileDescriptor {
                     filename: "setup.exe".to_string(),
                     size_bytes: 5,
@@ -2396,7 +2476,9 @@ enabled = true
             .await
             .expect("content write");
         let job = finalize_upload(&state, &upload.id).await.expect("finalize");
-        let second = finalize_upload(&state, &upload.id).await.expect("idempotent finalize");
+        let second = finalize_upload(&state, &upload.id)
+            .await
+            .expect("idempotent finalize");
         assert_eq!(job.id, second.id);
 
         run_queued_jobs_once(&state).await.expect("job run");
@@ -2459,7 +2541,9 @@ enabled = true
         put_upload_content(&state, &upload.id, Bytes::from_static(b"save"))
             .await
             .expect("save content");
-        let job = finalize_upload(&state, &upload.id).await.expect("save finalize");
+        let job = finalize_upload(&state, &upload.id)
+            .await
+            .expect("save finalize");
         run_queued_jobs_once(&state).await.expect("save job run");
         let stored_job = get_job(&state, &job.id).await.expect("save job fetch");
         assert_eq!(stored_job.state, "completed");
@@ -2488,12 +2572,12 @@ enabled = true
                         name: "Cleanup".to_string(),
                     }),
                 },
-                    version: VersionUploadTarget {
-                        version_name: "1.0.0".to_string(),
-                        version_code: None,
-                        original_source_name: None,
-                        notes: None,
-                    },
+                version: VersionUploadTarget {
+                    version_name: "1.0.0".to_string(),
+                    version_code: None,
+                    original_source_name: None,
+                    notes: None,
+                },
                 file: UploadFileDescriptor {
                     filename: "cleanup.bin".to_string(),
                     size_bytes: 3,
@@ -2505,25 +2589,29 @@ enabled = true
         .await
         .expect("upload create");
 
-        let temp_path: String = sqlx::query_scalar("SELECT temp_path FROM uploads WHERE public_id = ?1")
-            .bind(&upload.id)
-            .fetch_one(state.db())
-            .await
-            .expect("temp path");
+        let temp_path: String =
+            sqlx::query_scalar("SELECT temp_path FROM uploads WHERE public_id = ?1")
+                .bind(&upload.id)
+                .fetch_one(state.db())
+                .await
+                .expect("temp path");
         fs::write(&temp_path, b"tmp").expect("write temp file");
 
-        sqlx::query("UPDATE uploads SET updated_at = datetime('now', '-48 hours') WHERE public_id = ?1")
-            .bind(&upload.id)
-            .execute(state.db())
-            .await
-            .expect("age upload");
+        sqlx::query(
+            "UPDATE uploads SET updated_at = datetime('now', '-48 hours') WHERE public_id = ?1",
+        )
+        .bind(&upload.id)
+        .execute(state.db())
+        .await
+        .expect("age upload");
 
         cleanup_stale_uploads(&state).await.expect("cleanup");
-        let state_value: String = sqlx::query_scalar("SELECT state FROM uploads WHERE public_id = ?1")
-            .bind(&upload.id)
-            .fetch_one(state.db())
-            .await
-            .expect("fetch state");
+        let state_value: String =
+            sqlx::query_scalar("SELECT state FROM uploads WHERE public_id = ?1")
+                .bind(&upload.id)
+                .fetch_one(state.db())
+                .await
+                .expect("fetch state");
         assert_eq!(state_value, "expired");
         assert!(!Path::new(&temp_path).exists());
 

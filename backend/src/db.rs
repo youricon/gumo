@@ -32,7 +32,10 @@ pub async fn connect_and_migrate(storage: &StorageConfig) -> Result<SqlitePool> 
             )
         })?;
 
-    MIGRATOR.run(&pool).await.context("failed to run database migrations")?;
+    MIGRATOR
+        .run(&pool)
+        .await
+        .context("failed to run database migrations")?;
 
     Ok(pool)
 }
@@ -92,7 +95,9 @@ pub async fn foreign_keys_enabled(pool: &SqlitePool) -> Result<bool> {
         .fetch_one(pool)
         .await
         .context("failed to query PRAGMA foreign_keys")?;
-    let enabled: i64 = row.try_get(0).context("failed to decode foreign_keys pragma")?;
+    let enabled: i64 = row
+        .try_get(0)
+        .context("failed to decode foreign_keys pragma")?;
     Ok(enabled == 1)
 }
 
@@ -118,7 +123,11 @@ fn ensure_dir(path: &Path) -> Result<()> {
 }
 
 fn bool_to_int(value: bool) -> i64 {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 fn visibility_str(value: &Visibility) -> &'static str {
@@ -238,7 +247,10 @@ enabled = true
                 .fetch_one(&pool)
                 .await
                 .expect("seed query should succeed");
-        assert_eq!(seeded_platforms, 1, "pc platform should be seeded exactly once");
+        assert_eq!(
+            seeded_platforms, 1,
+            "pc platform should be seeded exactly once"
+        );
 
         let synced_libraries: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM libraries WHERE name = 'primary';")

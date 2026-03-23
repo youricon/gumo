@@ -248,10 +248,7 @@ pub async fn disable_integration_token(
     get_integration_token(pool, token_id).await
 }
 
-pub async fn delete_integration_token(
-    pool: &SqlitePool,
-    token_id: &str,
-) -> Result<(), ApiError> {
+pub async fn delete_integration_token(pool: &SqlitePool, token_id: &str) -> Result<(), ApiError> {
     let result = sqlx::query("DELETE FROM integration_tokens WHERE public_id = ?1")
         .bind(token_id)
         .execute(pool)
@@ -324,10 +321,7 @@ fn verify_local_password(state: &AppState, password: &str) -> Result<(), ApiErro
     let expected = fs::read_to_string(hash_path)
         .map_err(|_| unauthorized("failed to read admin password configuration"))?;
     let expected = expected.trim();
-    let expected = expected
-        .strip_prefix("sha256:")
-        .unwrap_or(expected)
-        .trim();
+    let expected = expected.strip_prefix("sha256:").unwrap_or(expected).trim();
     let actual = hash_secret(password);
     if actual == expected {
         Ok(())
@@ -371,11 +365,9 @@ fn build_session_cookie(token: &str, expires_at_unix: u64) -> Result<HeaderValue
 }
 
 fn build_expired_cookie() -> Result<HeaderValue, ApiError> {
-    HeaderValue::from_str(
-        &format!(
-            "{ADMIN_SESSION_COOKIE}=deleted; HttpOnly; Path=/; SameSite=Lax; Max-Age=0"
-        ),
-    )
+    HeaderValue::from_str(&format!(
+        "{ADMIN_SESSION_COOKIE}=deleted; HttpOnly; Path=/; SameSite=Lax; Max-Age=0"
+    ))
     .map_err(|_| unauthorized("failed to clear admin session cookie"))
 }
 
@@ -415,7 +407,11 @@ fn unix_now() -> u64 {
 }
 
 fn unauthorized(message: &str) -> ApiError {
-    ApiError::new(axum::http::StatusCode::UNAUTHORIZED, "unauthorized", message)
+    ApiError::new(
+        axum::http::StatusCode::UNAUTHORIZED,
+        "unauthorized",
+        message,
+    )
 }
 
 fn internal_error(err: impl std::fmt::Display) -> ApiError {
