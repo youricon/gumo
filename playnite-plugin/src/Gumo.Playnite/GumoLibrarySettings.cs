@@ -13,11 +13,13 @@ namespace Gumo.Playnite
         private string apiToken = string.Empty;
         private bool importPublicGamesOnly = false;
         private List<PendingGameUpload> pendingGameUploads = new List<PendingGameUpload>();
+        private List<InstalledGameState> installedGames = new List<InstalledGameState>();
 
         private string editingServerUrl;
         private string editingApiToken;
         private bool editingImportPublicGamesOnly;
         private List<PendingGameUpload> editingPendingGameUploads;
+        private List<InstalledGameState> editingInstalledGames;
 
         public GumoLibrarySettings()
         {
@@ -33,6 +35,7 @@ namespace Gumo.Playnite
                 ApiToken = savedSettings.ApiToken;
                 ImportPublicGamesOnly = savedSettings.ImportPublicGamesOnly;
                 PendingGameUploads = savedSettings.PendingGameUploads ?? new List<PendingGameUpload>();
+                InstalledGames = savedSettings.InstalledGames ?? new List<InstalledGameState>();
             }
         }
 
@@ -60,6 +63,12 @@ namespace Gumo.Playnite
             set => SetValue(ref pendingGameUploads, value ?? new List<PendingGameUpload>());
         }
 
+        public List<InstalledGameState> InstalledGames
+        {
+            get => installedGames;
+            set => SetValue(ref installedGames, value ?? new List<InstalledGameState>());
+        }
+
         public bool HasConnectionSettings()
         {
             return Uri.TryCreate(GumoServerUrl, UriKind.Absolute, out _) &&
@@ -77,6 +86,7 @@ namespace Gumo.Playnite
             editingApiToken = ApiToken;
             editingImportPublicGamesOnly = ImportPublicGamesOnly;
             editingPendingGameUploads = ClonePendingUploads();
+            editingInstalledGames = CloneInstalledGames();
         }
 
         public void CancelEdit()
@@ -85,6 +95,7 @@ namespace Gumo.Playnite
             ApiToken = editingApiToken;
             ImportPublicGamesOnly = editingImportPublicGamesOnly;
             PendingGameUploads = editingPendingGameUploads ?? new List<PendingGameUpload>();
+            InstalledGames = editingInstalledGames ?? new List<InstalledGameState>();
         }
 
         public void EndEdit()
@@ -119,9 +130,36 @@ namespace Gumo.Playnite
             plugin?.SavePluginSettings(this);
         }
 
+        public InstalledGameState GetInstalledGame(string gameId)
+        {
+            return InstalledGames?.FirstOrDefault(game => string.Equals(game.GameId, gameId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public void UpsertInstalledGame(InstalledGameState installedGame)
+        {
+            var games = CloneInstalledGames();
+            games.RemoveAll(game => string.Equals(game.GameId, installedGame.GameId, StringComparison.OrdinalIgnoreCase));
+            games.Add(installedGame.Clone());
+            InstalledGames = games;
+            plugin?.SavePluginSettings(this);
+        }
+
+        public void RemoveInstalledGame(string gameId)
+        {
+            var games = CloneInstalledGames();
+            games.RemoveAll(game => string.Equals(game.GameId, gameId, StringComparison.OrdinalIgnoreCase));
+            InstalledGames = games;
+            plugin?.SavePluginSettings(this);
+        }
+
         private List<PendingGameUpload> ClonePendingUploads()
         {
             return PendingGameUploads?.Select(upload => upload.Clone()).ToList() ?? new List<PendingGameUpload>();
+        }
+
+        private List<InstalledGameState> CloneInstalledGames()
+        {
+            return InstalledGames?.Select(game => game.Clone()).ToList() ?? new List<InstalledGameState>();
         }
     }
 
@@ -148,6 +186,22 @@ namespace Gumo.Playnite
         public PendingGameUpload Clone()
         {
             return (PendingGameUpload)MemberwiseClone();
+        }
+    }
+
+    public class InstalledGameState
+    {
+        public string GameId { get; set; }
+
+        public string VersionId { get; set; }
+
+        public string InstallDirectory { get; set; }
+
+        public string ExecutablePath { get; set; }
+
+        public InstalledGameState Clone()
+        {
+            return (InstalledGameState)MemberwiseClone();
         }
     }
 }

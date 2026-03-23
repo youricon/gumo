@@ -156,6 +156,24 @@ namespace Gumo.Playnite
                 cancellationToken);
         }
 
+        public async Task DownloadToFileAsync(
+            string path,
+            string destinationPath,
+            CancellationToken cancellationToken)
+        {
+            using (var response = await httpClient.GetAsync(path, cancellationToken))
+            {
+                if (!response.IsSuccessStatusCode)
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync();
+                    throw BuildApiException(response.StatusCode, responseBody);
+                }
+
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                File.WriteAllBytes(destinationPath, bytes);
+            }
+        }
+
         public Task<GumoUpload> CreateGamePayloadUploadAsync(
             GumoCreateGamePayloadUploadRequest request,
             CancellationToken cancellationToken)

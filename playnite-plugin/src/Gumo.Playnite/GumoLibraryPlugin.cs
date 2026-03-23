@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Controls;
@@ -116,6 +118,47 @@ namespace Gumo.Playnite
             };
         }
 
+        public override IEnumerable<InstallAction> GetInstallActions(GetInstallActionsArgs args)
+        {
+            if (args?.Game == null || !IsGumoGame(args.Game))
+            {
+                return Enumerable.Empty<InstallAction>();
+            }
+
+            return new[]
+            {
+                new InstallAction(new GumoInstallController(this, args.Game))
+                {
+                    Name = "Install from Gumo",
+                }
+            };
+        }
+
+        public override IEnumerable<PlayAction> GetPlayActions(GetPlayActionsArgs args)
+        {
+            if (args?.Game == null || !IsGumoGame(args.Game))
+            {
+                return Enumerable.Empty<PlayAction>();
+            }
+
+            var installed = settings.GetInstalledGame(args.Game.GameId);
+            if (installed == null || string.IsNullOrWhiteSpace(installed.ExecutablePath) || !File.Exists(installed.ExecutablePath))
+            {
+                return Enumerable.Empty<PlayAction>();
+            }
+
+            return new[]
+            {
+                new PlayAction
+                {
+                    Name = "Play",
+                    Type = PlayActionType.File,
+                    Path = installed.ExecutablePath,
+                    IsPlayAction = true,
+                }
+            };
+        }
+
         public override ISettings GetSettings(bool firstRunSettings)
         {
             return settings;
@@ -221,6 +264,87 @@ namespace Gumo.Playnite
         internal void UploadGameArchiveFromSettings()
         {
             UploadGameArchiveFromMenu();
+        }
+
+        internal void InstallGameFromController(Game game)
+        {
+            if (!settings.HasConnectionSettings())
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    "Configure the Gumo server URL and API token before installing a game.",
+                    "Gumo");
+                return;
+            }
+
+            try
+            {
+                var result = PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        InstallGame(progressArgs, game);
+                    },
+                    new GlobalProgressOptions($"Installing {game.Name} from Gumo", true)
+                    {
+                        IsIndeterminate = false,
+                    });
+
+                if (result.Canceled)
+                {
+                    Logger.Info($"Install canceled for {game.Name}.");
+                    return;
+                }
+
+                if (result.Error != null)
+                {
+                    throw result.Error;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.Info($"Install canceled for {game.Name}.");
+            }
+            catch (GumoApiException exception)
+            {
+                var message =
+                    $"Failed to install from Gumo: {(int)exception.StatusCode} {exception.StatusCode} - {exception.ApiMessage}";
+                Logger.Error(message);
+                PlayniteApi.Dialogs.ShowErrorMessage(message, "Gumo");
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo install: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unexpected failure during Gumo install: {exception.Message}",
+                    "Gumo");
+            }
+        }
+
+        internal void UninstallGameFromController(Game game)
+        {
+            var installed = settings.GetInstalledGame(game.GameId);
+            if (installed == null || string.IsNullOrWhiteSpace(installed.InstallDirectory))
+            {
+                settings.RemoveInstalledGame(game.GameId);
+                return;
+            }
+
+            try
+            {
+                if (Directory.Exists(installed.InstallDirectory))
+                {
+                    Directory.Delete(installed.InstallDirectory, true);
+                }
+
+                settings.RemoveInstalledGame(game.GameId);
+                game.InstallDirectory = null;
+            }
+            catch (Exception exception)
+            {
+                Logger.Error($"Unexpected failure during Gumo uninstall: {exception}");
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Unexpected failure during Gumo uninstall: {exception.Message}",
+                    "Gumo");
+            }
         }
 
         private async Task ProbeConnectionAsync(CancellationToken cancellationToken)
@@ -518,6 +642,85 @@ namespace Gumo.Playnite
                    !string.IsNullOrWhiteSpace(game.GameId);
         }
 
+        private void InstallGame(GlobalProgressActionArgs progressArgs, Game game)
+        {
+            using (var client = CreateApiClient())
+            {
+                var versions = client.GetVersionsAsync(game.GameId, progressArgs.CancelToken).GetAwaiter().GetResult();
+                var selectedVersion = SelectVersionForInstall(game, versions);
+                if (selectedVersion == null)
+                {
+                    return;
+                }
+
+                var installManifest = client
+                    .GetInstallManifestAsync(selectedVersion.Id, progressArgs.CancelToken)
+                    .GetAwaiter()
+                    .GetResult();
+                var installDirectory = ResolveInstallDirectory(game, installManifest);
+                if (string.IsNullOrWhiteSpace(installDirectory))
+                {
+                    return;
+                }
+
+                EnsureInstallDirectoryIsUsable(installDirectory);
+
+                var tempArchivePath = Path.Combine(
+                    Path.GetTempPath(),
+                    $"gumo-install-{installManifest.Artifact.Id}.zip");
+                try
+                {
+                    progressArgs.Text = $"Downloading {installManifest.Game.Name}";
+                    progressArgs.CurrentProgressValue = 10;
+                    var part = installManifest.Artifact.Parts.FirstOrDefault();
+                    if (part == null)
+                    {
+                        throw new InvalidOperationException("Install manifest did not contain any downloadable parts.");
+                    }
+
+                    client.DownloadToFileAsync(part.DownloadUrl, tempArchivePath, progressArgs.CancelToken)
+                        .GetAwaiter()
+                        .GetResult();
+
+                    progressArgs.Text = $"Verifying {installManifest.Game.Name}";
+                    progressArgs.CurrentProgressValue = 45;
+                    VerifyFileChecksum(tempArchivePath, installManifest.Artifact.Checksum);
+
+                    progressArgs.Text = $"Extracting {installManifest.Game.Name}";
+                    progressArgs.CurrentProgressValue = 70;
+                    ZipFile.ExtractToDirectory(tempArchivePath, installDirectory);
+
+                    progressArgs.Text = $"Selecting executable for {installManifest.Game.Name}";
+                    progressArgs.CurrentProgressValue = 90;
+                    var executablePath = ResolveExecutablePath(installDirectory);
+
+                    settings.UpsertInstalledGame(new InstalledGameState
+                    {
+                        GameId = game.GameId,
+                        VersionId = selectedVersion.Id,
+                        InstallDirectory = installDirectory,
+                        ExecutablePath = executablePath,
+                    });
+
+                    game.InstallDirectory = installDirectory;
+                    InvokeOnInstalled(new GameInstalledEventArgs(
+                        new GameInstallationData
+                        {
+                            GameID = game.Id,
+                            InstallDirectory = installDirectory,
+                        }));
+                    progressArgs.CurrentProgressValue = 100;
+                }
+                finally
+                {
+                    if (File.Exists(tempArchivePath))
+                    {
+                        File.Delete(tempArchivePath);
+                    }
+                }
+            }
+        }
+
         private async Task<Game> ResumePendingUploadAsync(
             GumoApiClient client,
             PendingGameUpload pending,
@@ -616,6 +819,43 @@ namespace Gumo.Playnite
 
             Logger.Info($"Imported uploaded Gumo game '{game.Name}' into Playnite.");
             return imported ?? GumoMapper.ToDatabaseGame(game, versions, Id);
+        }
+
+        private GumoGameVersion SelectVersionForInstall(Game game, List<GumoGameVersion> versions)
+        {
+            if (versions == null || versions.Count == 0)
+            {
+                throw new InvalidOperationException($"No Gumo versions are available for {game.Name}.");
+            }
+
+            if (versions.Count == 1)
+            {
+                return versions[0];
+            }
+
+            var defaultInput = versions.FirstOrDefault(version => version.IsLatest)?.Id ?? versions[0].Id;
+            var prompt = string.Join(
+                Environment.NewLine,
+                versions.Select(version =>
+                    $"{version.Id} ({version.VersionName}{(string.IsNullOrWhiteSpace(version.VersionCode) ? string.Empty : $" / {version.VersionCode}")})"));
+            var selection = PlayniteApi.Dialogs.SelectString(
+                $"Enter the Gumo version ID to install for {game.Name}:{Environment.NewLine}{prompt}",
+                "Gumo",
+                defaultInput);
+
+            if (!selection.Result)
+            {
+                return null;
+            }
+
+            var selected = versions.FirstOrDefault(version =>
+                string.Equals(version.Id, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+            if (selected == null)
+            {
+                throw new InvalidOperationException($"Unknown Gumo version ID '{selection.SelectedString}'.");
+            }
+
+            return selected;
         }
 
         private GumoLibrary SelectLibrary(GumoApiClient client, CancellationToken cancellationToken)
@@ -720,6 +960,104 @@ namespace Gumo.Playnite
                     Name = gameName,
                 },
             };
+        }
+
+        private string ResolveInstallDirectory(Game game, GumoInstallManifest installManifest)
+        {
+            var existing = settings.GetInstalledGame(game.GameId);
+            if (existing != null && !string.IsNullOrWhiteSpace(existing.InstallDirectory))
+            {
+                return existing.InstallDirectory;
+            }
+
+            if (!string.IsNullOrWhiteSpace(game.InstallDirectory))
+            {
+                return game.InstallDirectory;
+            }
+
+            var selected = PlayniteApi.Dialogs.SelectFolder();
+            if (string.IsNullOrWhiteSpace(selected))
+            {
+                return null;
+            }
+
+            return Path.Combine(selected, SanitizePathComponent(installManifest.Game.Name));
+        }
+
+        private void EnsureInstallDirectoryIsUsable(string installDirectory)
+        {
+            if (Directory.Exists(installDirectory) && Directory.EnumerateFileSystemEntries(installDirectory).Any())
+            {
+                throw new InvalidOperationException(
+                    $"Install directory '{installDirectory}' already exists and is not empty.");
+            }
+
+            Directory.CreateDirectory(installDirectory);
+        }
+
+        private static void VerifyFileChecksum(string filePath, string expectedChecksum)
+        {
+            if (string.IsNullOrWhiteSpace(expectedChecksum))
+            {
+                return;
+            }
+
+            using (var stream = File.OpenRead(filePath))
+            using (var sha256 = SHA256.Create())
+            {
+                var actualChecksum = BitConverter
+                    .ToString(sha256.ComputeHash(stream))
+                    .Replace("-", string.Empty)
+                    .ToLowerInvariant();
+                if (!string.Equals(actualChecksum, expectedChecksum, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Downloaded archive checksum verification failed.");
+                }
+            }
+        }
+
+        private string ResolveExecutablePath(string installDirectory)
+        {
+            var executables = Directory
+                .EnumerateFiles(installDirectory, "*.exe", SearchOption.AllDirectories)
+                .OrderBy(path => path)
+                .ToList();
+
+            if (executables.Count == 0)
+            {
+                throw new InvalidOperationException("No executable was found in the extracted install directory.");
+            }
+
+            if (executables.Count == 1)
+            {
+                return executables[0];
+            }
+
+            var defaultInput = executables[0];
+            var prompt = string.Join(Environment.NewLine, executables);
+            var selection = PlayniteApi.Dialogs.SelectString(
+                $"Multiple executables were found. Enter the executable path to use:{Environment.NewLine}{prompt}",
+                "Gumo",
+                defaultInput);
+
+            if (!selection.Result || string.IsNullOrWhiteSpace(selection.SelectedString))
+            {
+                throw new InvalidOperationException("An executable selection is required to finish installation.");
+            }
+
+            if (!executables.Contains(selection.SelectedString, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Selected executable '{selection.SelectedString}' was not found in the install directory.");
+            }
+
+            return executables.First(path => string.Equals(path, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string SanitizePathComponent(string value)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            return new string((value ?? "gumo-game").Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
         }
 
         private void SavePendingUpload(PendingGameUpload pending)
