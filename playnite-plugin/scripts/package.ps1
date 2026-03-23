@@ -62,6 +62,7 @@ function Resolve-ToolboxPath {
     }
 
     $fallbacks = @(
+        (Join-Path $env:LOCALAPPDATA "Playnite\Toolbox.exe"),
         (Join-Path $env:LOCALAPPDATA "Programs\Playnite\Toolbox.exe"),
         (Join-Path $env:ProgramFiles "Playnite\Toolbox.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Playnite\Toolbox.exe")
@@ -199,6 +200,10 @@ if (Test-Path $artifactPath) {
     Remove-Item -Force $artifactPath
 }
 
+Get-ChildItem -Path $outputRoot -Filter "$($manifest.Id)*.pext" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Remove-Item -Force $_.FullName
+}
+
 New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
 New-Item -ItemType Directory -Force -Path $packageRootDir | Out-Null
 
@@ -220,12 +225,16 @@ if (-not (Test-Path (Join-Path $packageRootDir "extension.yaml"))) {
 $toolboxPath = Resolve-ToolboxPath -ExplicitPath $ToolboxPath
 & $toolboxPath pack $packageRootDir $outputRoot
 
-$toolboxArtifactPath = Join-Path $outputRoot "$($manifest.Id).pext"
-if (-not (Test-Path $toolboxArtifactPath)) {
-    throw "Toolbox did not produce the expected package: $toolboxArtifactPath"
+$toolboxArtifacts = Get-ChildItem -Path $outputRoot -Filter "$($manifest.Id)*.pext" -File -ErrorAction SilentlyContinue
+if (-not $toolboxArtifacts) {
+    throw "Toolbox did not produce a .pext artifact under $outputRoot"
 }
 
-Move-Item -Path $toolboxArtifactPath -Destination $artifactPath -Force
+if ($toolboxArtifacts.Count -gt 1) {
+    throw "Toolbox produced multiple .pext artifacts and the script could not choose one automatically."
+}
+
+Move-Item -Path $toolboxArtifacts[0].FullName -Destination $artifactPath -Force
 
 $artifactSize = (Get-Item $artifactPath).Length
 
