@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -63,7 +64,7 @@ namespace Gumo.Playnite
                 Description = metadata.Description,
                 ReleaseDate = metadata.ReleaseDate,
                 Version = metadata.Version,
-                Links = metadata.Links ?? new List<Link>(),
+                Links = new ObservableCollection<Link>(metadata.Links ?? new List<Link>()),
             };
         }
 
@@ -146,12 +147,25 @@ namespace Gumo.Playnite
 
         private static string SerializeReleaseDate(ReleaseDate? releaseDate)
         {
-            return releaseDate?.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (!releaseDate.HasValue)
+            {
+                return null;
+            }
+
+            return releaseDate.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         }
 
-        private static List<string> ToNames(IEnumerable<MetadataProperty> values)
+        private static List<string> ToNames(IEnumerable<Genre> values)
         {
-            return (values ?? Enumerable.Empty<MetadataProperty>())
+            return (values ?? Enumerable.Empty<Genre>())
+                .Select(value => value?.Name)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList();
+        }
+
+        private static List<string> ToNames(IEnumerable<Company> values)
+        {
+            return (values ?? Enumerable.Empty<Company>())
                 .Select(value => value?.Name)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList();

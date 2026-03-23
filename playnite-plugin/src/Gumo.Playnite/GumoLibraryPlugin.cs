@@ -87,8 +87,12 @@ namespace Gumo.Playnite
 
             try
             {
-                var importedGame = PlayniteApi.Dialogs.ActivateGlobalProgress(
-                    progressArgs => RunGameUploadImport(progressArgs.CancelToken),
+                Game importedGame = null;
+                PlayniteApi.Dialogs.ActivateGlobalProgress(
+                    progressArgs =>
+                    {
+                        importedGame = RunGameUploadImport(progressArgs.CancelToken);
+                    },
                     new GlobalProgressOptions("Uploading game archive to Gumo", true)
                     {
                         IsIndeterminate = false,
@@ -462,7 +466,8 @@ namespace Gumo.Playnite
 
         private Game ImportCompletedUpload(GumoApiClient client, GumoJob job, PendingGameUpload pending)
         {
-            var gameId = job.Result?["game_id"]?.Value<string>();
+            var gameIdToken = job.Result != null ? job.Result["game_id"] : null;
+            var gameId = gameIdToken != null ? gameIdToken.ToString() : null;
             if (string.IsNullOrWhiteSpace(gameId))
             {
                 Logger.Warn($"Completed Gumo upload for '{pending.GameName}' without a game_id result.");
