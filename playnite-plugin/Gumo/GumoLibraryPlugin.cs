@@ -3322,12 +3322,26 @@ namespace Gumo.Playnite
 
         private static string MakeRelativePath(string baseDirectory, string fullPath)
         {
-            var basePath = baseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
-                           Path.DirectorySeparatorChar;
-            var baseUri = new Uri(basePath);
-            var fullUri = new Uri(fullPath);
-            return Uri.UnescapeDataString(baseUri.MakeRelativeUri(fullUri).ToString())
-                .Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+            {
+                throw new ArgumentException("Base directory is required.", nameof(baseDirectory));
+            }
+
+            if (string.IsNullOrWhiteSpace(fullPath))
+            {
+                throw new ArgumentException("Full path is required.", nameof(fullPath));
+            }
+
+            var relativePath = Path.GetRelativePath(
+                Path.GetFullPath(baseDirectory),
+                Path.GetFullPath(fullPath));
+
+            if (string.Equals(relativePath, ".", StringComparison.Ordinal))
+            {
+                return string.Empty;
+            }
+
+            return relativePath.Replace('\\', '/');
         }
 
         private static string EnsureTrailingDirectorySeparator(string value)
