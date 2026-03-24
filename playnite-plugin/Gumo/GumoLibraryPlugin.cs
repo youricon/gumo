@@ -3332,7 +3332,7 @@ namespace Gumo.Playnite
                 throw new ArgumentException("Full path is required.", nameof(fullPath));
             }
 
-            var relativePath = Path.GetRelativePath(
+            var relativePath = GetRelativePathCompat(
                 Path.GetFullPath(baseDirectory),
                 Path.GetFullPath(fullPath));
 
@@ -3342,6 +3342,56 @@ namespace Gumo.Playnite
             }
 
             return relativePath.Replace('\\', '/');
+        }
+
+        private static string GetRelativePathCompat(string baseDirectory, string fullPath)
+        {
+            var normalizedBase = Path.GetFullPath(baseDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var normalizedFull = Path.GetFullPath(fullPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            var baseRoot = Path.GetPathRoot(normalizedBase);
+            var fullRoot = Path.GetPathRoot(normalizedFull);
+            if (!string.Equals(baseRoot, fullRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return normalizedFull;
+            }
+
+            var baseSegments = normalizedBase
+                .Substring(baseRoot.Length)
+                .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            var fullSegments = normalizedFull
+                .Substring(fullRoot.Length)
+                .Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+
+            var commonLength = 0;
+            while (commonLength < baseSegments.Length &&
+                   commonLength < fullSegments.Length &&
+                   string.Equals(baseSegments[commonLength], fullSegments[commonLength], StringComparison.OrdinalIgnoreCase))
+            {
+                commonLength++;
+            }
+
+            if (commonLength == baseSegments.Length && commonLength == fullSegments.Length)
+            {
+                return ".";
+            }
+
+            var parts = new List<string>();
+            for (var index = commonLength; index < baseSegments.Length; index++)
+            {
+                parts.Add("..");
+            }
+
+            for (var index = commonLength; index < fullSegments.Length; index++)
+            {
+                parts.Add(fullSegments[index]);
+            }
+
+            return parts.Count == 0
+                ? "."
+                : string.Join(Path.DirectorySeparatorChar.ToString(), parts);
         }
 
         private static string EnsureTrailingDirectorySeparator(string value)
