@@ -1046,6 +1046,12 @@ namespace Gumo.Playnite
             }
 
             var saveFilePattern = NormalizeSavePattern(patternInput.SelectedString);
+            if (!ValidateSavePattern(saveFilePattern))
+            {
+                localUploadSaveConfigurationCanceled = true;
+                return null;
+            }
+
             var resolvedDirectory = ResolveSavePathFromConfiguration(game.InstallDirectory, storedPath, savePathType);
             if (string.IsNullOrWhiteSpace(resolvedDirectory) || !Directory.Exists(resolvedDirectory))
             {
@@ -1074,6 +1080,27 @@ namespace Gumo.Playnite
                 ResolvedDirectory = resolvedDirectory,
                 SnapshotName = $"Initial save import {DateTime.Now:yyyy-MM-dd HH:mm}",
             };
+        }
+
+        private bool ValidateSavePattern(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return true;
+            }
+
+            try
+            {
+                CompileSavePatternRegex(value);
+                return true;
+            }
+            catch (ArgumentException exception)
+            {
+                PlayniteApi.Dialogs.ShowErrorMessage(
+                    $"Invalid save matching regex:{Environment.NewLine}{exception.Message}",
+                    "Gumo");
+                return false;
+            }
         }
 
         private void ApplySaveExclusionToGameUpload(
@@ -1201,7 +1228,7 @@ namespace Gumo.Playnite
                 }
 
                 var patternInput = PlayniteApi.Dialogs.SelectString(
-                    "Optional match pattern. Leave blank to include every file in the selected save folder. Use patterns like '*.sav' or 'SaveData/*.dat'.",
+                    "Optional regex match pattern. Leave blank to include every file in the selected save folder. Use patterns like '^.*\\.sav$' or '^SaveData/.*\\.dat$'.",
                     "Gumo",
                     version.SaveFilePattern ?? string.Empty);
                 if (!patternInput.Result)
@@ -1210,6 +1237,11 @@ namespace Gumo.Playnite
                 }
 
                 var saveFilePattern = NormalizeSavePattern(patternInput.SelectedString);
+                if (!ValidateSavePattern(saveFilePattern))
+                {
+                    return;
+                }
+
                 var updatedVersion = PatchSaveConfigurationWithProgress(
                     version.Id,
                     storedPath,
@@ -3310,10 +3342,7 @@ namespace Gumo.Playnite
                 ? normalizedPath
                 : Path.GetFileName(normalizedPath);
 
-            return Regex.IsMatch(
-                target,
-                GlobPatternToRegex(normalizedPattern),
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return CompileSavePatternRegex(normalizedPattern).IsMatch(target);
         }
 
         private static bool IsExcludedFromUpload(
@@ -3350,34 +3379,11 @@ namespace Gumo.Playnite
             return candidateFullPath.StartsWith(rootFullPath, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string GlobPatternToRegex(string pattern)
+        private static Regex CompileSavePatternRegex(string pattern)
         {
-            var regex = "^";
-            for (var index = 0; index < pattern.Length; index++)
-            {
-                var ch = pattern[index];
-                if (ch == '*')
-                {
-                    var isDoubleStar = index + 1 < pattern.Length && pattern[index + 1] == '*';
-                    regex += isDoubleStar ? ".*" : "[^/]*";
-                    if (isDoubleStar)
-                    {
-                        index++;
-                    }
-
-                    continue;
-                }
-
-                if (ch == '?')
-                {
-                    regex += "[^/]";
-                    continue;
-                }
-
-                regex += Regex.Escape(ch.ToString());
-            }
-
-            return regex + "$";
+            return new Regex(
+                pattern,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
         private static bool IsZipArchivePath(string path)

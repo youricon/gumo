@@ -29,23 +29,20 @@ If the save path points at the game root, a matching pattern is strongly recomme
 
 ### Pattern Format
 
-The matching pattern uses glob syntax, not regex.
+The matching pattern uses regular expressions.
 
-- `*` matches any number of characters except `/`
-- `?` matches exactly one character except `/`
-- `**` matches across directories
-- if the pattern contains no `/`, it matches filenames only
-- if the pattern contains `/`, it matches the relative path under the configured save folder
+- if the regex contains no `/`, it matches filenames only
+- if the regex contains `/`, it matches the relative path under the configured save folder
+- matching is case-insensitive
 
 Examples:
 
-- `*.sav`
-- `profile?.json`
-- `SaveData/*.dat`
-- `SaveData/**/*.dat`
-- `**/slot*.bin`
+- `^.*\.sav$`
+- `^profile.\.json$`
+- `^SaveData/.*\.dat$`
+- `^.*/slot.*\.bin$`
 
-Unsupported regex-style features include groups, alternation, and character classes.
+Standard .NET regex syntax is supported. Invalid regex patterns are rejected when configuring the save backup.
 
 ### Local Upload Behavior
 
@@ -128,7 +125,7 @@ Implemented:
 - custom import flow that uploads a local payload file into Gumo
 - backend-backed save backup configuration per version
 - save snapshot backup and restore using configured relative or absolute save paths
-- optional glob-based save file filtering for backup, restore, and local upload exclusion
+- optional regex-based save file filtering for backup, restore, and local upload exclusion
 - local game upload flow that can split save files into a separate save snapshot upload
 - durable upload/job tracking persisted in plugin settings
 - startup recovery that resumes pending Gumo uploads after Playnite restarts
