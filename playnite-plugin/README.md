@@ -25,6 +25,8 @@ From the Playnite game menu, `Configure save backup` lets the user set:
 - whether that path is `relative` to the install directory or `absolute`
 - an optional file-matching pattern
 
+For relative paths, the install directory itself is stored as `.` and child folders are stored relative to that root.
+
 If the save path points at the game root, a matching pattern is strongly recommended, and is required during local-game upload so the plugin does not exclude the whole install from the game payload.
 
 ### Pattern Format
@@ -34,6 +36,8 @@ The matching pattern uses regular expressions.
 - if the regex contains no `/`, it matches filenames only
 - if the regex contains `/`, it matches the relative path under the configured save folder
 - matching is case-insensitive
+
+When a save folder is excluded from a local game upload, the regex is evaluated inside that save folder. The folder path is not prepended to the regex.
 
 Examples:
 

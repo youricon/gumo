@@ -1133,7 +1133,8 @@ namespace Gumo.Playnite
                 return;
             }
 
-            source.ExcludeMatchPattern = $"{relativeSaveRoot.TrimEnd('/')}/{saveConfiguration.SaveFilePattern.TrimStart('/', '\\')}";
+            source.ExcludeRelativeRoot = relativeSaveRoot;
+            source.ExcludeMatchPattern = saveConfiguration.SaveFilePattern;
         }
 
         private void PersistSaveConfigurationAndUploadSnapshot(
@@ -1469,6 +1470,17 @@ namespace Gumo.Playnite
             }
 
             var relativePath = MakeRelativePath(installDirectory, absoluteSelectedPath);
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return ".";
+            }
+
+            while (relativePath.StartsWith("../", StringComparison.Ordinal) ||
+                   relativePath.StartsWith("..\\", StringComparison.Ordinal))
+            {
+                relativePath = relativePath.Substring(3);
+            }
+
             return string.IsNullOrWhiteSpace(relativePath) ? "." : relativePath;
         }
 
@@ -3207,6 +3219,7 @@ namespace Gumo.Playnite
                 source.Path,
                 source.MatchPattern,
                 source.ExcludedRelativeRoots,
+                source.ExcludeRelativeRoot,
                 source.ExcludeMatchPattern);
             if (files.Count == 0)
             {
@@ -3247,6 +3260,7 @@ namespace Gumo.Playnite
             string sourceDirectory,
             string matchPattern,
             IEnumerable<string> excludedRelativeRoots,
+            string excludeRelativeRoot,
             string excludeMatchPattern)
         {
             var excludedRoots = (excludedRelativeRoots ?? Enumerable.Empty<string>())
@@ -3263,14 +3277,14 @@ namespace Gumo.Playnite
                     SizeBytes = new FileInfo(path).Length,
                 })
                 .Where(file => FileMatchesPattern(file.RelativePath, matchPattern))
-                .Where(file => !IsExcludedFromUpload(file.RelativePath, excludedRoots, excludeMatchPattern))
+                .Where(file => !IsExcludedFromUpload(file.RelativePath, excludedRoots, excludeRelativeRoot, excludeMatchPattern))
                 .OrderBy(file => file.RelativePath, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
         private static bool HasUploadableFiles(string sourceDirectory, string matchPattern)
         {
-            return EnumerateDirectoryFiles(sourceDirectory, matchPattern, null, null).Count > 0;
+            return EnumerateDirectoryFiles(sourceDirectory, matchPattern, null, null, null).Count > 0;
         }
 
         private static List<List<DirectoryUploadFile>> PartitionDirectoryFiles(
@@ -3348,6 +3362,7 @@ namespace Gumo.Playnite
         private static bool IsExcludedFromUpload(
             string relativePath,
             IReadOnlyList<string> excludedRelativeRoots,
+            string excludeRelativeRoot,
             string excludeMatchPattern)
         {
             var normalizedPath = relativePath.Replace('\\', '/');
@@ -3368,8 +3383,34 @@ namespace Gumo.Playnite
                 }
             }
 
-            return !string.IsNullOrWhiteSpace(excludeMatchPattern) &&
-                   FileMatchesPattern(relativePath, excludeMatchPattern);
+            if (string.IsNullOrWhiteSpace(excludeMatchPattern))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(excludeRelativeRoot))
+            {
+                return FileMatchesPattern(relativePath, excludeMatchPattern);
+            }
+
+            var normalizedRoot = excludeRelativeRoot.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrWhiteSpace(normalizedRoot))
+            {
+                return FileMatchesPattern(relativePath, excludeMatchPattern);
+            }
+
+            if (string.Equals(normalizedPath, normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var scopedRelativePath = normalizedPath.Substring(normalizedRoot.Length + 1);
+            return FileMatchesPattern(scopedRelativePath, excludeMatchPattern);
         }
 
         private static bool IsPathInsideOrEqual(string candidatePath, string rootPath)
@@ -3469,6 +3510,8 @@ namespace Gumo.Playnite
             public string MatchPattern { get; set; }
 
             public string ExcludeMatchPattern { get; set; }
+
+            public string ExcludeRelativeRoot { get; set; }
 
             public List<string> ExcludedRelativeRoots { get; set; } = new List<string>();
         }
