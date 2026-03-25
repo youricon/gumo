@@ -150,6 +150,7 @@ in
         User = cfg.user;
         Group = cfg.group;
         WorkingDirectory = cfg.dataDir;
+        Environment = [ "GUMO_WEB_DIR=${cfg.package}/share/gumo/web" ];
         ExecStart = "${cfg.package}/bin/gumo --config /etc/gumo/gumo.toml";
         Restart = "on-failure";
         RestartSec = 2;
