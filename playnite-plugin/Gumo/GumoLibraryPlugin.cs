@@ -3060,25 +3060,32 @@ namespace Gumo.Playnite
                 return executables[0];
             }
 
-            var defaultInput = executables[0];
-            var prompt = string.Join(Environment.NewLine, executables);
-            var selection = PlayniteApi.Dialogs.SelectString(
-                $"Multiple executables were found. Enter the executable path to use:{Environment.NewLine}{prompt}",
-                "Gumo",
-                defaultInput);
+            var items = executables
+                .Select(path => new OptionListPickerItem
+                {
+                    Id = path,
+                    Title = Path.GetFileName(path),
+                    Description = MakeRelativePath(installDirectory, path),
+                    Value = path,
+                })
+                .ToList();
+            var selected = ShowOptionListPicker(
+                "Select Executable",
+                "Multiple executables were found. Choose the executable to use for this installation.",
+                items);
 
-            if (!selection.Result || string.IsNullOrWhiteSpace(selection.SelectedString))
+            if (selected == null || !(selected.Value is string selectedPath) || string.IsNullOrWhiteSpace(selectedPath))
             {
                 throw new InvalidOperationException("An executable selection is required to finish installation.");
             }
 
-            if (!executables.Contains(selection.SelectedString, StringComparer.OrdinalIgnoreCase))
+            if (!executables.Contains(selectedPath, StringComparer.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    $"Selected executable '{selection.SelectedString}' was not found in the install directory.");
+                    $"Selected executable '{selectedPath}' was not found in the install directory.");
             }
 
-            return executables.First(path => string.Equals(path, selection.SelectedString, StringComparison.OrdinalIgnoreCase));
+            return executables.First(path => string.Equals(path, selectedPath, StringComparison.OrdinalIgnoreCase));
         }
 
         private static List<string> FindExecutables(string installDirectory)
