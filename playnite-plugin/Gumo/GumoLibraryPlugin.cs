@@ -61,7 +61,9 @@ namespace Gumo.Playnite
                     foreach (var game in filteredGames)
                     {
                         var versions = client.GetVersionsAsync(game.Id, cancellationToken).GetAwaiter().GetResult();
-                        metadata.Add(GumoMapper.ToGameMetadata(NormalizeGumoGameMediaUrls(game), versions));
+                        var item = GumoMapper.ToGameMetadata(NormalizeGumoGameMediaUrls(game), versions);
+                        ApplyInstalledState(item);
+                        metadata.Add(item);
                     }
 
                     Logger.Info($"Gumo GetGames imported {metadata.Count} game metadata records.");
@@ -79,6 +81,28 @@ namespace Gumo.Playnite
             }
 
             return Array.Empty<GameMetadata>();
+        }
+
+        private void ApplyInstalledState(GameMetadata metadata)
+        {
+            if (metadata == null || string.IsNullOrWhiteSpace(metadata.GameId))
+            {
+                return;
+            }
+
+            var installed = settings.GetInstalledGame(metadata.GameId);
+            if (installed == null || string.IsNullOrWhiteSpace(installed.InstallDirectory))
+            {
+                return;
+            }
+
+            if (!Directory.Exists(installed.InstallDirectory))
+            {
+                return;
+            }
+
+            metadata.IsInstalled = true;
+            metadata.InstallDirectory = installed.InstallDirectory;
         }
 
         public override IEnumerable<Game> ImportGames(LibraryImportGamesArgs args)
