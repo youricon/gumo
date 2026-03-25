@@ -18,6 +18,7 @@ use crate::api::types::{
     ImportSessionResource, JobProgress, JobResource, ResourceError, UploadPartResource,
     UploadResource,
 };
+use crate::time::timestamp_to_rfc3339;
 
 const ACTIVE_UPLOAD_RETENTION_HOURS: i64 = 24;
 const COMPLETED_UPLOAD_RETENTION_HOURS: i64 = 72;
@@ -2281,10 +2282,6 @@ fn job_scope_clause(scope: &str) -> Result<&'static str, ApiError> {
 
 fn prefixed_id(prefix: &str) -> String {
     format!("{prefix}_{}", Uuid::new_v4().simple())
-}
-
-fn timestamp_to_rfc3339(value: &str) -> String {
-    value.replace(' ', "T") + "Z"
 }
 
 fn visibility_str_from_row(value: String) -> &'static str {

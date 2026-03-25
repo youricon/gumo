@@ -15,6 +15,30 @@ use crate::api::types::{
     InstallGameResource, InstallManifestResource, InstallVersionResource, LibraryResource,
     LinkResource, SaveRestoreManifestResource, SaveSnapshotManifestResource, SaveSnapshotResource,
 };
+use crate::time::timestamp_to_rfc3339;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SavePathType {
+    Relative,
+    Absolute,
+}
+
+impl SavePathType {
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "relative" => Some(Self::Relative),
+            "absolute" => Some(Self::Absolute),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Relative => "relative",
+            Self::Absolute => "absolute",
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -499,7 +523,7 @@ pub async fn patch_version(
 
     validate_save_path_config(
         next_save_path.as_deref(),
-        next_save_path_type.as_deref(),
+        next_save_path_type,
         next_save_file_pattern.as_deref(),
     )?;
 
@@ -529,7 +553,7 @@ pub async fn patch_version(
     .bind(request.save_path.is_some())
     .bind(next_save_path.as_deref())
     .bind(request.save_path_type.is_some())
-    .bind(next_save_path_type.as_deref())
+    .bind(next_save_path_type.map(SavePathType::as_str))
     .bind(request.save_file_pattern.is_some())
     .bind(next_save_file_pattern.as_deref())
     .execute(state.db())
@@ -1067,10 +1091,6 @@ async fn file_response(path: PathBuf) -> Result<Response, ApiError> {
     Ok(response)
 }
 
-fn timestamp_to_rfc3339(value: &str) -> String {
-    value.replace(' ', "T") + "Z"
-}
-
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
     value.and_then(|item| {
         let trimmed = item.trim();
@@ -1082,20 +1102,19 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
     })
 }
 
-fn normalize_save_path_type(value: Option<String>) -> Result<Option<String>, ApiError> {
+fn normalize_save_path_type(value: Option<String>) -> Result<Option<SavePathType>, ApiError> {
     let normalized = normalize_optional_text(value);
     match normalized.as_deref() {
         None => Ok(None),
-        Some("relative") | Some("absolute") => Ok(normalized),
-        Some(_) => Err(ApiError::bad_request(
-            "save_path_type must be 'relative' or 'absolute'",
-        )),
+        Some(value) => SavePathType::parse(value).map(Some).ok_or_else(|| {
+            ApiError::bad_request("save_path_type must be 'relative' or 'absolute'")
+        }),
     }
 }
 
 fn validate_save_path_config(
     save_path: Option<&str>,
-    save_path_type: Option<&str>,
+    save_path_type: Option<SavePathType>,
     save_file_pattern: Option<&str>,
 ) -> Result<(), ApiError> {
     if save_path.is_some() != save_path_type.is_some() {

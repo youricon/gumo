@@ -966,35 +966,37 @@ namespace Gumo.Playnite
                 {
                     new OptionListPickerItem
                     {
-                        Id = "configure",
+                        Id = LocalSaveUploadAction.Configure.ToString(),
                         Title = "Configure save folder",
                         Description = "Exclude configured saves from the game archive and upload them separately.",
-                        Value = "configure",
+                        Value = LocalSaveUploadAction.Configure,
                     },
                     new OptionListPickerItem
                     {
-                        Id = "skip",
+                        Id = LocalSaveUploadAction.Skip.ToString(),
                         Title = "Skip save upload",
                         Description = "Upload only the game payload right now.",
-                        Value = "skip",
+                        Value = LocalSaveUploadAction.Skip,
                     },
                     new OptionListPickerItem
                     {
-                        Id = "cancel",
+                        Id = LocalSaveUploadAction.Cancel.ToString(),
                         Title = "Cancel upload",
                         Description = "Abort the local upload flow.",
-                        Value = "cancel",
+                        Value = LocalSaveUploadAction.Cancel,
                     },
                 });
 
-            var action = selection?.Value as string;
-            if (string.Equals(action, "cancel", StringComparison.Ordinal))
+            var action = selection?.Value is LocalSaveUploadAction selectedAction
+                ? selectedAction
+                : LocalSaveUploadAction.Skip;
+            if (action == LocalSaveUploadAction.Cancel)
             {
                 localUploadSaveConfigurationCanceled = true;
                 return null;
             }
 
-            if (!string.Equals(action, "configure", StringComparison.Ordinal))
+            if (action != LocalSaveUploadAction.Configure)
             {
                 return null;
             }
@@ -1006,13 +1008,13 @@ namespace Gumo.Playnite
                 SaveDirectory = game.InstallDirectory,
             };
             var savePathType = PromptSavePathType();
-            if (string.IsNullOrWhiteSpace(savePathType))
+            if (!savePathType.HasValue)
             {
                 localUploadSaveConfigurationCanceled = true;
                 return null;
             }
 
-            var selectedPath = PromptSaveDirectory(game, temporaryInstalledState, null, savePathType);
+            var selectedPath = PromptSaveDirectory(game, temporaryInstalledState, null, savePathType.Value);
             if (string.IsNullOrWhiteSpace(selectedPath))
             {
                 localUploadSaveConfigurationCanceled = true;
@@ -1028,7 +1030,7 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var storedPath = NormalizeConfiguredSavePath(selectedPath, savePathType, game.InstallDirectory);
+            var storedPath = NormalizeConfiguredSavePath(selectedPath, savePathType.Value, game.InstallDirectory);
             if (string.IsNullOrWhiteSpace(storedPath))
             {
                 localUploadSaveConfigurationCanceled = true;
@@ -1052,7 +1054,10 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            var resolvedDirectory = ResolveSavePathFromConfiguration(game.InstallDirectory, storedPath, savePathType);
+            var resolvedDirectory = ResolveSavePathFromConfiguration(
+                game.InstallDirectory,
+                storedPath,
+                SavePathTypeToApiString(savePathType.Value));
             if (string.IsNullOrWhiteSpace(resolvedDirectory) || !Directory.Exists(resolvedDirectory))
             {
                 PlayniteApi.Dialogs.ShowErrorMessage(
@@ -1075,7 +1080,7 @@ namespace Gumo.Playnite
             return new LocalUploadSaveConfiguration
             {
                 SavePath = storedPath,
-                SavePathType = savePathType,
+                SavePathType = SavePathTypeToApiString(savePathType.Value),
                 SaveFilePattern = saveFilePattern,
                 ResolvedDirectory = resolvedDirectory,
                 SnapshotName = $"Initial save import {DateTime.Now:yyyy-MM-dd HH:mm}",
@@ -1211,18 +1216,18 @@ namespace Gumo.Playnite
                 }
 
                 var savePathType = PromptSavePathType();
-                if (string.IsNullOrWhiteSpace(savePathType))
+                if (!savePathType.HasValue)
                 {
                     return;
                 }
 
-                var selectedPath = PromptSaveDirectory(game, installed, version, savePathType);
+                var selectedPath = PromptSaveDirectory(game, installed, version, savePathType.Value);
                 if (string.IsNullOrWhiteSpace(selectedPath))
                 {
                     return;
                 }
 
-                var storedPath = NormalizeConfiguredSavePath(selectedPath, savePathType, installed.InstallDirectory);
+                var storedPath = NormalizeConfiguredSavePath(selectedPath, savePathType.Value, installed.InstallDirectory);
                 if (string.IsNullOrWhiteSpace(storedPath))
                 {
                     return;
@@ -1246,7 +1251,7 @@ namespace Gumo.Playnite
                 var updatedVersion = PatchSaveConfigurationWithProgress(
                     version.Id,
                     storedPath,
-                    savePathType,
+                    SavePathTypeToApiString(savePathType.Value),
                     saveFilePattern);
                 if (updatedVersion == null)
                 {
@@ -1378,7 +1383,7 @@ namespace Gumo.Playnite
             return updatedVersion;
         }
 
-        private string PromptSavePathType()
+        private SavePathType? PromptSavePathType()
         {
             var selected = ShowOptionListPicker(
                 "Gumo Save Backup",
@@ -1387,38 +1392,38 @@ namespace Gumo.Playnite
                 {
                     new OptionListPickerItem
                     {
-                        Id = "relative",
+                        Id = SavePathType.Relative.ToString(),
                         Title = "Relative to install directory",
                         Description = "Best when saves live under the game install folder on every machine.",
-                        Value = "relative",
+                        Value = SavePathType.Relative,
                     },
                     new OptionListPickerItem
                     {
-                        Id = "absolute",
+                        Id = SavePathType.Absolute.ToString(),
                         Title = "Absolute path",
                         Description = "Use a fixed save location outside the install directory.",
-                        Value = "absolute",
+                        Value = SavePathType.Absolute,
                     },
                 });
-            return selected?.Value as string;
+            return selected?.Value is SavePathType savePathType ? savePathType : (SavePathType?)null;
         }
 
         private string PromptSaveDirectory(
             Game game,
             InstalledGameState installed,
             GumoGameVersion version,
-            string savePathType)
+            SavePathType savePathType)
         {
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                dialog.Description = savePathType == "relative"
+                dialog.Description = savePathType == SavePathType.Relative
                     ? $"Select the save folder under the install directory for {game.Name}"
                     : $"Select the absolute save folder for {game.Name}";
 
                 var initialPath = ResolveConfiguredSaveDirectory(installed, version);
                 if (string.IsNullOrWhiteSpace(initialPath) || !Directory.Exists(initialPath))
                 {
-                    initialPath = savePathType == "relative" ? installed.InstallDirectory : installed.SaveDirectory;
+                    initialPath = savePathType == SavePathType.Relative ? installed.InstallDirectory : installed.SaveDirectory;
                 }
 
                 if (!string.IsNullOrWhiteSpace(initialPath) && Directory.Exists(initialPath))
@@ -1435,7 +1440,7 @@ namespace Gumo.Playnite
             }
         }
 
-        private string NormalizeConfiguredSavePath(string selectedPath, string savePathType, string installDirectory)
+        private string NormalizeConfiguredSavePath(string selectedPath, SavePathType savePathType, string installDirectory)
         {
             var normalizedPath = selectedPath?.Trim();
             if (string.IsNullOrWhiteSpace(normalizedPath))
@@ -1443,7 +1448,7 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            if (!string.Equals(savePathType, "relative", StringComparison.OrdinalIgnoreCase))
+            if (savePathType != SavePathType.Relative)
             {
                 return normalizedPath;
             }
@@ -1496,6 +1501,11 @@ namespace Gumo.Playnite
             return installed?.SaveDirectory;
         }
 
+        private static string SavePathTypeToApiString(SavePathType value)
+        {
+            return value == SavePathType.Relative ? "relative" : "absolute";
+        }
+
         private string ResolveSavePathFromConfiguration(string installDirectory, string savePath, string savePathType)
         {
             if (string.IsNullOrWhiteSpace(savePath) || string.IsNullOrWhiteSpace(savePathType))
@@ -1503,7 +1513,8 @@ namespace Gumo.Playnite
                 return null;
             }
 
-            if (string.Equals(savePathType, "relative", StringComparison.OrdinalIgnoreCase))
+            if (TryParseSavePathType(savePathType, out var parsedSavePathType) &&
+                parsedSavePathType == SavePathType.Relative)
             {
                 if (string.IsNullOrWhiteSpace(installDirectory))
                 {
@@ -1517,6 +1528,22 @@ namespace Gumo.Playnite
             }
 
             return savePath;
+        }
+
+        private static bool TryParseSavePathType(string value, out SavePathType savePathType)
+        {
+            switch ((value ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "relative":
+                    savePathType = SavePathType.Relative;
+                    return true;
+                case "absolute":
+                    savePathType = SavePathType.Absolute;
+                    return true;
+                default:
+                    savePathType = SavePathType.Relative;
+                    return false;
+            }
         }
 
         private string BuildSaveConfigurationSummary(
@@ -3591,6 +3618,19 @@ namespace Gumo.Playnite
             public string ResolvedDirectory { get; set; }
 
             public string SnapshotName { get; set; }
+        }
+
+        private enum SavePathType
+        {
+            Relative = 0,
+            Absolute = 1,
+        }
+
+        private enum LocalSaveUploadAction
+        {
+            Configure = 0,
+            Skip = 1,
+            Cancel = 2,
         }
 
         private sealed class DirectoryUploadFile

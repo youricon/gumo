@@ -19,6 +19,7 @@ use crate::api::types::{
     AdminSessionResource, CreatedIntegrationTokenResource, IntegrationTokenResource,
 };
 use crate::domain::AdminMode;
+use crate::time::timestamp_to_rfc3339;
 
 const ADMIN_SESSION_COOKIE: &str = "gumo_admin_session";
 const ADMIN_SESSION_TTL: Duration = Duration::from_secs(60 * 60 * 12);
@@ -393,10 +394,6 @@ fn parse_bearer_token(value: &str) -> Option<&str> {
 
 fn hash_secret(value: &str) -> String {
     hex_encode(Sha256::digest(value.as_bytes()))
-}
-
-fn timestamp_to_rfc3339(value: &str) -> String {
-    value.replace(' ', "T") + "Z"
 }
 
 fn unix_now() -> u64 {
