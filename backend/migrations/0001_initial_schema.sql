@@ -102,6 +102,7 @@ CREATE TABLE game_publishers (
   PRIMARY KEY (game_id, publisher_id)
 );
 
+
 CREATE TABLE version_artifacts (
   id INTEGER PRIMARY KEY,
   public_id TEXT NOT NULL UNIQUE,

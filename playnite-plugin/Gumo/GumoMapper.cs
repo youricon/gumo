@@ -25,6 +25,7 @@ namespace Gumo.Playnite
                 Genres = ToMetadataProperties(game.Genres),
                 Developers = ToMetadataProperties(game.Developers),
                 Publishers = ToMetadataProperties(game.Publishers),
+                Tags = ToMetadataProperties(game.Tags),
                 Links = ToLinks(game.Links),
                 CoverImage = ToMetadataFile(game.CoverImage),
                 BackgroundImage = ToMetadataFile(game.BackgroundImage),
@@ -49,6 +50,7 @@ namespace Gumo.Playnite
                 Genres = ToNames(game.Genres),
                 Developers = ToNames(game.Developers),
                 Publishers = ToNames(game.Publishers),
+                Tags = ToNames(game.Tags),
                 Links = ToPatchLinks(game.Links),
                 CoverImage = EmptyToNull(coverImage),
                 BackgroundImage = EmptyToNull(backgroundImage),
@@ -75,6 +77,9 @@ namespace Gumo.Playnite
                 BackgroundImage = metadata.BackgroundImage?.Path,
                 Icon = metadata.Icon?.Path,
                 Links = new ObservableCollection<Link>(metadata.Links ?? new List<Link>()),
+                Tags = new ObservableCollection<Tag>((metadata.Tags ?? new HashSet<MetadataProperty>())
+                    .OfType<MetadataNameProperty>()
+                    .Select(tag => new Tag(tag.Name))),
             };
         }
 
@@ -176,6 +181,14 @@ namespace Gumo.Playnite
         private static List<string> ToNames(IEnumerable<Company> values)
         {
             return (values ?? Enumerable.Empty<Company>())
+                .Select(value => value?.Name)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToList();
+        }
+
+        private static List<string> ToNames(IEnumerable<Tag> values)
+        {
+            return (values ?? Enumerable.Empty<Tag>())
                 .Select(value => value?.Name)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToList();

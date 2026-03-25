@@ -58,6 +58,8 @@ pub struct PatchGameRequest {
     #[serde(default)]
     pub publishers: Option<Vec<String>>,
     #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
     pub links: Option<Vec<LinkResource>>,
     #[serde(default)]
     pub cover_image: Option<Option<String>>,
@@ -287,6 +289,9 @@ pub async fn patch_game(
             publishers,
         )
         .await?;
+    }
+    if let Some(tags) = request.tags {
+        replace_named_set(&mut tx, game_row_id, "tags", "game_tags", "tag_id", tags).await?;
     }
     if let Some(links) = request.links {
         sqlx::query("DELETE FROM links WHERE game_id = ?1")
@@ -854,6 +859,7 @@ async fn load_game_resource(
             row.get("public_id"),
         )
         .await?,
+        tags: load_named_set(pool, "tags", "game_tags", "tag_id", row.get("public_id")).await?,
         links: load_links(pool, row.get("public_id")).await?,
         visibility: row.get("visibility"),
         cover_image: row.get("cover_image"),

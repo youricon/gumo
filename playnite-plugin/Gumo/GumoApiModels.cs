@@ -84,6 +84,9 @@ namespace Gumo.Playnite
         [DataMember(Name = "publishers")]
         public List<string> Publishers { get; set; } = new List<string>();
 
+        [DataMember(Name = "tags")]
+        public List<string> Tags { get; set; } = new List<string>();
+
         [DataMember(Name = "links")]
         public List<GumoLink> Links { get; set; } = new List<GumoLink>();
 
@@ -126,6 +129,9 @@ namespace Gumo.Playnite
 
         [DataMember(Name = "publishers")]
         public List<string> Publishers { get; set; } = new List<string>();
+
+        [DataMember(Name = "tags")]
+        public List<string> Tags { get; set; } = new List<string>();
 
         [DataMember(Name = "links")]
         public List<GumoLink> Links { get; set; } = new List<GumoLink>();

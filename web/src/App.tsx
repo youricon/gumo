@@ -15,6 +15,7 @@ type Game = {
   genres: string[];
   developers: string[];
   publishers: string[];
+  tags: string[];
   links: { name: string; url: string }[];
   visibility: "public" | "private";
   cover_image: string | null;
@@ -380,6 +381,10 @@ function GameDetailPage({ gameId }: { gameId: string }) {
               <dt>Publishers</dt>
               <dd>{game.publishers.join(", ") || "None"}</dd>
             </div>
+            <div>
+              <dt>Tags</dt>
+              <dd>{game.tags.join(", ") || "None"}</dd>
+            </div>
           </dl>
           {game.links.length > 0 ? (
             <div className="link-row">
@@ -450,6 +455,7 @@ function AdminPage() {
     genres: "",
     developers: "",
     publishers: "",
+    tags: "",
   });
   const [versionForm, setVersionForm] = useState({
     version_name: "",
@@ -548,6 +554,7 @@ function AdminPage() {
           genres: toCommaSeparated(gameResponse.genres),
           developers: toCommaSeparated(gameResponse.developers),
           publishers: toCommaSeparated(gameResponse.publishers),
+          tags: toCommaSeparated(gameResponse.tags),
         });
       })
       .catch((err: Error) => {
@@ -642,6 +649,7 @@ function AdminPage() {
           genres: parseCommaSeparated(gameForm.genres),
           developers: parseCommaSeparated(gameForm.developers),
           publishers: parseCommaSeparated(gameForm.publishers),
+          tags: parseCommaSeparated(gameForm.tags),
         }),
       });
       setSelectedGame(updated);
@@ -939,6 +947,18 @@ function AdminPage() {
                       setGameForm((current) => ({
                         ...current,
                         publishers: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="field field-wide">
+                  <span>Tags</span>
+                  <input
+                    value={gameForm.tags}
+                    onChange={(event) =>
+                      setGameForm((current) => ({
+                        ...current,
+                        tags: event.target.value,
                       }))
                     }
                   />

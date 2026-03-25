@@ -66,6 +66,7 @@ pub struct GameSummaryResource {
     pub genres: Vec<String>,
     pub developers: Vec<String>,
     pub publishers: Vec<String>,
+    pub tags: Vec<String>,
     pub links: Vec<LinkResource>,
     pub visibility: String,
     pub cover_image: Option<String>,
