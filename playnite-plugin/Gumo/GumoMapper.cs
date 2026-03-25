@@ -64,7 +64,7 @@ namespace Gumo.Playnite
             Guid pluginId)
         {
             var metadata = ToGameMetadata(game, versions);
-            return new Game(metadata.Name)
+            var databaseGame = new Game(metadata.Name)
             {
                 PluginId = pluginId,
                 GameId = game.Id,
@@ -77,10 +77,14 @@ namespace Gumo.Playnite
                 BackgroundImage = metadata.BackgroundImage?.Path,
                 Icon = metadata.Icon?.Path,
                 Links = new ObservableCollection<Link>(metadata.Links ?? new List<Link>()),
-                Tags = new ObservableCollection<Tag>((metadata.Tags ?? new HashSet<MetadataProperty>())
-                    .OfType<MetadataNameProperty>()
-                    .Select(tag => new Tag(tag.Name))),
             };
+
+            foreach (var tag in (metadata.Tags ?? new HashSet<MetadataProperty>()).OfType<MetadataNameProperty>())
+            {
+                databaseGame.Tags.Add(new Tag(tag.Name));
+            }
+
+            return databaseGame;
         }
 
         private static GumoGameVersion SelectPreferredVersion(IReadOnlyCollection<GumoGameVersion> versions)
