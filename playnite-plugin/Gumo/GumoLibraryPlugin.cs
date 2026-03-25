@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using Playnite.SDK;
@@ -2867,6 +2868,12 @@ namespace Gumo.Playnite
             if (items == null || items.Count == 0)
             {
                 return null;
+            }
+
+            var application = Application.Current;
+            if (application?.Dispatcher != null && !application.Dispatcher.CheckAccess())
+            {
+                return application.Dispatcher.Invoke(() => ShowOptionListPicker(title, prompt, items));
             }
 
             var pickerWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
