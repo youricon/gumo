@@ -178,7 +178,10 @@ namespace Gumo.Playnite
             string destinationPath,
             CancellationToken cancellationToken)
         {
-            using (var response = await httpClient.GetAsync(path, cancellationToken))
+            using (var response = await httpClient.SendAsync(
+                new HttpRequestMessage(HttpMethod.Get, path),
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -186,8 +189,23 @@ namespace Gumo.Playnite
                     throw BuildApiException(response.StatusCode, responseBody);
                 }
 
-                var bytes = await response.Content.ReadAsByteArrayAsync();
-                File.WriteAllBytes(destinationPath, bytes);
+                var destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrWhiteSpace(destinationDirectory))
+                {
+                    Directory.CreateDirectory(destinationDirectory);
+                }
+
+                using (var responseStream = await response.Content.ReadAsStreamAsync())
+                using (var destinationStream = new FileStream(
+                    destinationPath,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    81920,
+                    true))
+                {
+                    await responseStream.CopyToAsync(destinationStream, 81920, cancellationToken);
+                }
             }
         }
 
