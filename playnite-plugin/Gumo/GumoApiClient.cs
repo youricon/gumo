@@ -102,11 +102,8 @@ namespace Gumo.Playnite
             string filePath,
             CancellationToken cancellationToken)
         {
-            var bytes = File.ReadAllBytes(filePath);
-            using (var content = new ByteArrayContent(bytes))
+            using (var content = CreateFileContent(filePath, DetectMediaContentType(filePath)))
             {
-                content.Headers.ContentType =
-                    new MediaTypeHeaderValue(DetectMediaContentType(filePath));
                 return await SendAsync<GumoMediaAsset>(
                     HttpMethod.Post,
                     $"/api/integrations/playnite/media?filename={Uri.EscapeDataString(Path.GetFileName(filePath))}",
@@ -287,11 +284,7 @@ namespace Gumo.Playnite
             string filePath,
             CancellationToken cancellationToken)
         {
-            // TODO: Replace this buffered upload path with true streaming from disk.
-            // The current ByteArrayContent approach reads the entire archive part into memory,
-            // which is acceptable only as a temporary bring-up path for smaller payloads.
-            var bytes = File.ReadAllBytes(filePath);
-            using (var content = new ByteArrayContent(bytes))
+            using (var content = CreateFileContent(filePath, "application/octet-stream"))
             {
                 return await SendAsync<GumoUploadPart>(
                     HttpMethod.Put,
@@ -317,11 +310,7 @@ namespace Gumo.Playnite
             string filePath,
             CancellationToken cancellationToken)
         {
-            // TODO: Replace this buffered upload path with true streaming from disk.
-            // The current ByteArrayContent approach reads the entire archive into memory,
-            // which is acceptable only as a temporary bring-up path for smaller files.
-            var bytes = File.ReadAllBytes(filePath);
-            using (var content = new ByteArrayContent(bytes))
+            using (var content = CreateFileContent(filePath, "application/octet-stream"))
             {
                 return await SendAsync<GumoUpload>(
                     HttpMethod.Put,
@@ -426,6 +415,21 @@ namespace Gumo.Playnite
                 "http_error",
                 responseBody,
                 $"Gumo API request failed with status {(int)statusCode}.");
+        }
+
+        private static StreamContent CreateFileContent(string filePath, string contentType)
+        {
+            var stream = new FileStream(
+                filePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                81920,
+                true);
+            var content = new StreamContent(stream, 81920);
+            content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Headers.ContentLength = stream.Length;
+            return content;
         }
 
         private static string SerializeJson(object value)
