@@ -378,30 +378,41 @@ namespace Gumo.Playnite
             using (var request = new HttpRequestMessage(method, path))
             {
                 request.Content = content;
-                using (var response = await client.SendAsync(request, cancellationToken))
+                try
                 {
-                    var responseBody = await response.Content.ReadAsStringAsync();
-                    if (!response.IsSuccessStatusCode)
+                    using (var response = await client.SendAsync(request, cancellationToken))
                     {
-                        throw BuildApiException(response.StatusCode, responseBody);
-                    }
+                        var responseBody = await response.Content.ReadAsStringAsync();
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            throw BuildApiException(response.StatusCode, responseBody);
+                        }
 
-                    if (typeof(T) == typeof(VoidResponse))
-                    {
-                        return (T)(object)new VoidResponse();
-                    }
+                        if (typeof(T) == typeof(VoidResponse))
+                        {
+                            return (T)(object)new VoidResponse();
+                        }
 
-                    try
-                    {
-                        return DeserializeJson<T>(responseBody);
+                        try
+                        {
+                            return DeserializeJson<T>(responseBody);
+                        }
+                        catch (Exception exception)
+                        {
+                            Logger.Error($"Failed to deserialize Gumo API response from {path}: {exception}");
+                            throw new InvalidOperationException(
+                                "Gumo returned an unreadable response.",
+                                exception);
+                        }
                     }
-                    catch (Exception exception)
-                    {
-                        Logger.Error($"Failed to deserialize Gumo API response from {path}: {exception}");
-                        throw new InvalidOperationException(
-                            "Gumo returned an unreadable response.",
-                            exception);
-                    }
+                }
+                catch (HttpRequestException exception)
+                {
+                    throw CreateNetworkException(method, path, exception);
+                }
+                catch (IOException exception)
+                {
+                    throw CreateNetworkException(method, path, exception);
                 }
             }
         }
@@ -444,6 +455,30 @@ namespace Gumo.Playnite
             client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
             return client;
+        }
+
+        private Exception CreateNetworkException(HttpMethod method, string path, Exception exception)
+        {
+            var rootCause = GetInnermostException(exception);
+            var rootMessage = string.IsNullOrWhiteSpace(rootCause?.Message)
+                ? exception.Message
+                : rootCause.Message;
+            Logger.Error(
+                $"Network request failed for {method} {path}: {exception}. Root cause: {rootCause?.GetType().Name ?? exception.GetType().Name}: {rootMessage}");
+            return new InvalidOperationException(
+                $"Network request failed: {rootMessage}",
+                exception);
+        }
+
+        private static Exception GetInnermostException(Exception exception)
+        {
+            var current = exception;
+            while (current?.InnerException != null)
+            {
+                current = current.InnerException;
+            }
+
+            return current;
         }
 
         private static StreamContent CreateFileContent(string filePath, string contentType)
