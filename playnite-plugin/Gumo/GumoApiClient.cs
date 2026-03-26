@@ -16,21 +16,16 @@ namespace Gumo.Playnite
     {
         private static readonly ILogger Logger = LogManager.GetLogger();
         private static readonly HttpMethod PatchMethod = new HttpMethod("PATCH");
+        private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(30);
         private readonly HttpClient httpClient;
+        private readonly HttpClient transferHttpClient;
         private readonly string serverUrl;
 
         public GumoApiClient(string serverUrl, string apiToken)
         {
             this.serverUrl = NormalizeServerUrl(serverUrl);
-            httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(this.serverUrl, UriKind.Absolute),
-                Timeout = TimeSpan.FromSeconds(30),
-            };
-            httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", apiToken.Trim());
-            httpClient.DefaultRequestHeaders.Accept.Add(
-                new MediaTypeWithQualityHeaderValue("application/json"));
+            httpClient = CreateHttpClient(apiToken, DefaultRequestTimeout);
+            transferHttpClient = CreateHttpClient(apiToken, Timeout.InfiniteTimeSpan);
         }
 
         public async Task<int> ProbeAsync(CancellationToken cancellationToken)
@@ -104,7 +99,7 @@ namespace Gumo.Playnite
         {
             using (var content = CreateFileContent(filePath, DetectMediaContentType(filePath)))
             {
-                return await SendAsync<GumoMediaAsset>(
+                return await SendTransferAsync<GumoMediaAsset>(
                     HttpMethod.Post,
                     $"/api/integrations/playnite/media?filename={Uri.EscapeDataString(Path.GetFileName(filePath))}",
                     content,
@@ -175,7 +170,7 @@ namespace Gumo.Playnite
             string destinationPath,
             CancellationToken cancellationToken)
         {
-            using (var response = await httpClient.SendAsync(
+            using (var response = await transferHttpClient.SendAsync(
                 new HttpRequestMessage(HttpMethod.Get, path),
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken))
@@ -286,7 +281,7 @@ namespace Gumo.Playnite
         {
             using (var content = CreateFileContent(filePath, "application/octet-stream"))
             {
-                return await SendAsync<GumoUploadPart>(
+                return await SendTransferAsync<GumoUploadPart>(
                     HttpMethod.Put,
                     $"/api/integrations/playnite/upload-parts/{Uri.EscapeDataString(uploadPartId)}/content",
                     content,
@@ -312,7 +307,7 @@ namespace Gumo.Playnite
         {
             using (var content = CreateFileContent(filePath, "application/octet-stream"))
             {
-                return await SendAsync<GumoUpload>(
+                return await SendTransferAsync<GumoUpload>(
                     HttpMethod.Put,
                     $"/api/integrations/playnite/uploads/{Uri.EscapeDataString(uploadId)}/content",
                     content,
@@ -332,6 +327,7 @@ namespace Gumo.Playnite
         public void Dispose()
         {
             httpClient.Dispose();
+            transferHttpClient.Dispose();
         }
 
         private Task<T> GetAsync<T>(string path, CancellationToken cancellationToken)
@@ -360,10 +356,29 @@ namespace Gumo.Playnite
             HttpContent content,
             CancellationToken cancellationToken)
         {
+            return await SendWithClientAsync<T>(httpClient, method, path, content, cancellationToken);
+        }
+
+        private async Task<T> SendTransferAsync<T>(
+            HttpMethod method,
+            string path,
+            HttpContent content,
+            CancellationToken cancellationToken)
+        {
+            return await SendWithClientAsync<T>(transferHttpClient, method, path, content, cancellationToken);
+        }
+
+        private async Task<T> SendWithClientAsync<T>(
+            HttpClient client,
+            HttpMethod method,
+            string path,
+            HttpContent content,
+            CancellationToken cancellationToken)
+        {
             using (var request = new HttpRequestMessage(method, path))
             {
                 request.Content = content;
-                using (var response = await httpClient.SendAsync(request, cancellationToken))
+                using (var response = await client.SendAsync(request, cancellationToken))
                 {
                     var responseBody = await response.Content.ReadAsStringAsync();
                     if (!response.IsSuccessStatusCode)
@@ -415,6 +430,20 @@ namespace Gumo.Playnite
                 "http_error",
                 responseBody,
                 $"Gumo API request failed with status {(int)statusCode}.");
+        }
+
+        private HttpClient CreateHttpClient(string apiToken, TimeSpan timeout)
+        {
+            var client = new HttpClient
+            {
+                BaseAddress = new Uri(serverUrl, UriKind.Absolute),
+                Timeout = timeout,
+            };
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", apiToken.Trim());
+            client.DefaultRequestHeaders.Accept.Add(
+                new MediaTypeWithQualityHeaderValue("application/json"));
+            return client;
         }
 
         private static StreamContent CreateFileContent(string filePath, string contentType)
